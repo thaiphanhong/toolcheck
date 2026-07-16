@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Vision - Chạy YOLOv8 ONNX Local</title>
+    <!-- Tải thư viện ONNX Runtime Web từ CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; margin: 0; padding: 20px; color: #1f2937; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #1e3a8a; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #6b7280; margin-bottom: 25px; font-size: 14px; }
+        .image-container { display: flex; gap: 20px; margin-bottom: 25px; }
+        .image-box { flex: 1; text-align: center; border: 2px dashed #d1d5db; padding: 15px; border-radius: 8px; background: #fafafa; position: relative; }
+        .image-box label { display: block; font-weight: bold; margin-bottom: 10px; color: #374151; }
+        canvas { max-width: 100%; border-radius: 6px; display: none; margin: 10px auto 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        button { background-color: #2563eb; color: white; border: none; padding: 14px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); }
+        button:hover { background-color: #1d4ed8; }
+        button:disabled { background-color: #93c5fd; cursor: not-allowed; }
+        .status-bar { text-align: center; margin-top: 15px; font-weight: 500; padding: 10px; border-radius: 6px; background-color: #e5e7eb; color: #374151; }
+        .status-ready { background-color: #dcfce7; color: #166534; }
+        .status-error { background-color: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Trạm Kiểm Soát Dụng Cụ - AI Cục Bộ</h2>
+    <div class="subtitle">Phát hiện đối tượng bằng mô hình YOLOv8 (.onnx) chạy trực tiếp trên trình duyệt</div>
+
+    <div id="modelStatus" class="status-bar">Đang tải mô hình ONNX... Vui lòng đợi!</div>
+
+    <div class="image-container">
+        <div class="image-box">
+            <label>1. Ảnh chụp lúc VÀO (Check-in)</label>
+            <input type="file" id="imageIn" accept="image/*" onchange="previewImage(event, 'canvasIn', 'in')">
+            <canvas id="canvasIn"></canvas>
+        </div>
+        <div class="image-box">
+            <label>2. Ảnh chụp lúc RA (Check-out)</label>
+            <input type="file" id="imageOut" accept="image/*" onchange="previewImage(event, 'canvasOut', 'out')">
+            <canvas id="canvasOut"></canvas>
+        </div>
+    </div>
+
+    <button id="checkButton" onclick="analyzeImages()" disabled>KÍCH HOẠT QUÉT ĐỐI TƯỢNG</button>
+</div>
+
+<script>
+    // ==========================================
+    // CẤU HÌNH YOLOV8
+    // ==========================================
+    const MODEL_PATH = "./best.onnx"; // Đảm bảo file best.onnx nằm cùng thư mục với file HTML này
+    const CONFIDENCE_THRESHOLD = 0.5; // Ngưỡng tin cậy (50%)
+    const IOU_THRESHOLD = 0.45;       // Ngưỡng lọc NMS (Tránh vẽ nhiều khung đè lên 1 vật)
+    const MODEL_INPUT_SIZE = 640;     // Kích thước ảnh đầu vào chuẩn của YOLOv8
+
+    let session = null;
+    let imgInObj = null;
+    let imgOutObj = null;
+
+    // 1. KHỞI TẠO MÔ HÌNH ONNX
+    async function initModel() {
+        try {
+            // Cấu hình ort để chạy WebGL hoặc CPU
+            ort.env.wasm.numThreads = 1; 
+            session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['webgl', 'wasm'] });
+            
+            const statusDiv = document.getElementById('modelStatus');
+            statusDiv.textContent = "✅ Mô hình best.onnx đã sẵn sàng!";
+            statusDiv.classList.add('status-ready');
+            document.getElementById('checkButton').disabled = false;
+        } catch (error) {
+            console.error(error);
+            const statusDiv = document.getElementById('modelStatus');
+            statusDiv.textContent = "❌ Lỗi tải mô hình! Hãy kiểm tra xem file best.onnx đã có trong thư mục chưa và bạn đã chạy qua Local Server chưa.";
+            statusDiv.classList.add('status-error');
+        }
+    }
+
+    // Chạy khởi tạo ngay khi tải trang
+    window.onload = initModel;
+
+    // 2. HIỂN THỊ ẢNH GỐC
+    function previewImage(event, canvasId, imgKey) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    if (imgKey === 'in') imgInObj = img;
+                    if (imgKey === 'out') imgOutObj = img;
+                    drawImageOnCanvas(canvasId, img);
+                }
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function drawImageOnCanvas(canvasId, imgObj) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        const maxDim = 600;
+        let width = imgObj.width;
+        let height = imgObj.height;
+
+        if (width > maxDim || height > maxDim) {
+            if (width > height) { height = (maxDim / width) * height; width = maxDim; } 
+            else { width = (maxDim / height) * width; height = maxDim; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.display = 'block';
+        ctx.drawImage(imgObj, 0, 0, width, height);
+    }
+
+    // 3. TIỀN XỬ LÝ ẢNH (Pre-processing) CHO YOLOV8
+    function preprocessImage(imgObj) {
+        // Vẽ ảnh gốc lên 1 canvas ảo kích thước 640x640
+        const canvas = document.createElement('canvas');
+        canvas.width = MODEL_INPUT_SIZE;
+        canvas.height = MODEL_INPUT_SIZE;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imgObj, 0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+        const imgData = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE).data;
+
+        // YOLOv8 yêu cầu mảng tensor [1, 3, 640, 640] dạng Float32, chuẩn hóa 0-1, kênh màu RGB (đã tách riêng)
+        const float32Data = new Float32Array(3 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE);
+        for (let i = 0; i < MODEL_INPUT_SIZE * MODEL_INPUT_SIZE; i++) {
+            float32Data[i] = imgData[i * 4] / 255.0;                                        // Kênh R
+            float32Data[i + MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 1] / 255.0;      // Kênh G
+            float32Data[i + 2 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 2] / 255.0;  // Kênh B
+        }
+        return new ort.Tensor('float32', float32Data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+    }
+
+    // 4. CHẠY SUY LUẬN VÀ HẬU XỬ LÝ (Post-processing)
+    async function detectObjects(imgObj, canvasId) {
+        if (!session) return;
+
+        const tensor = preprocessImage(imgObj);
+        
+        // Chạy qua mạng nơ-ron
+        const feeds = {};
+        feeds[session.inputNames[0]] = tensor;
+        const results = await session.run(feeds);
+        
+        // YOLOv8 output thường có shape: [1, 4 + classes, 8400]
+        const outputTensor = results[session.outputNames[0]];
+        const outputData = outputTensor.data;
+        
+        // Tính toán thông số đầu ra
+        const numClasses = outputTensor.dims[1] - 4; // Bỏ qua 4 tọa độ (x, y, w, h)
+        const numAnchors = outputTensor.dims[2];     // Thường là 8400
+
+        let boxes = [];
+
+        // Duyệt qua 8400 hộp neo (anchors)
+        for (let i = 0; i < numAnchors; i++) {
+            let maxClassScore = 0;
+            let classId = -1;
+
+            // Tìm class có độ tin cậy cao nhất tại anchor này
+            for (let c = 0; c < numClasses; c++) {
+                let score = outputData[(4 + c) * numAnchors + i];
+                if (score > maxClassScore) {
+                    maxClassScore = score;
+                    classId = c;
+                }
+            }
+
+            // Nếu vượt ngưỡng tin cậy
+            if (maxClassScore >= CONFIDENCE_THRESHOLD) {
+                let xc = outputData[0 * numAnchors + i]; // Center x
+                let yc = outputData[1 * numAnchors + i]; // Center y
+                let w = outputData[2 * numAnchors + i];  // Width
+                let h = outputData[3 * numAnchors + i];  // Height
+
+                // Chuyển từ (xc, yc, w, h) sang (x1, y1, x2, y2) trên hệ quy chiếu 640x640
+                let x1 = xc - w / 2;
+                let y1 = yc - h / 2;
+                let x2 = xc + w / 2;
+                let y2 = yc + h / 2;
+
+                boxes.push({ x1, y1, x2, y2, score: maxClassScore, classId: classId });
+            }
+        }
+
+        // Lọc các khung hình đè lên nhau (Non-Maximum Suppression - NMS)
+        boxes = applyNMS(boxes, IOU_THRESHOLD);
+
+        // Vẽ lên Canvas
+        drawBoxes(canvasId, imgObj, boxes);
+    }
+
+    // 5. THUẬT TOÁN NMS (Lọc khung trùng lặp)
+    function applyNMS(boxes, iouThreshold) {
+        if (boxes.length === 0) return [];
+        // Sắp xếp các hộp theo điểm tin cậy từ cao xuống thấp
+        boxes.sort((a, b) => b.score - a.score);
+        
+        const selected = [];
+        while (boxes.length > 0) {
+            const current = boxes.shift();
+            selected.push(current);
+            // Lọc những hộp còn lại nếu nó trùng diện tích quá nhiều với hộp vừa chọn
+            boxes = boxes.filter(box => {
+                if (box.classId !== current.classId) return true;
+                const iou = calculateIoU(current, box);
+                return iou < iouThreshold;
+            });
+        }
+        return selected;
+    }
+
+    function calculateIoU(box1, box2) {
+        const x_left = Math.max(box1.x1, box2.x1);
+        const y_top = Math.max(box1.y1, box2.y1);
+        const x_right = Math.min(box1.x2, box2.x2);
+        const y_bottom = Math.min(box1.y2, box2.y2);
+
+        if (x_right < x_left || y_bottom < y_top) return 0.0;
+
+        const intersection = (x_right - x_left) * (y_bottom - y_top);
+        const area1 = (box1.x2 - box1.x1) * (box1.y2 - box1.y1);
+        const area2 = (box2.x2 - box2.x1) * (box2.y2 - box2.y1);
+        
+        return intersection / (area1 + area2 - intersection);
+    }
+
+    // 6. VẼ KHUNG ĐỊNH VỊ
+    function drawBoxes(canvasId, imgObj, boxes) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+
+        // Tỷ lệ scale từ 640x640 của mô hình về kích thước thực tế hiển thị trên canvas
+        const scaleX = canvas.width / MODEL_INPUT_SIZE;
+        const scaleY = canvas.height / MODEL_INPUT_SIZE;
+
+        boxes.forEach(box => {
+            const x = box.x1 * scaleX;
+            const y = box.y1 * scaleY;
+            const w = (box.x2 - box.x1) * scaleX;
+            const h = (box.y2 - box.y1) * scaleY;
+
+            ctx.strokeStyle = '#dc2626'; // Đỏ
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+
+            // Tùy chọn vẽ thêm Label: 
+            /*
+            ctx.fillStyle = '#dc2626';
+            ctx.fillRect(x, y - 20, 100, 20);
+            ctx.fillStyle = 'white';
+            ctx.font = '14px Arial';
+            ctx.fillText(`Lớp ${box.classId}: ${(box.score*100).toFixed(0)}%`, x + 5, y - 5);
+            */
+        });
+    }
+
+    // ==========================================
+    // LUỒNG CHẠY CHÍNH KHI NHẤN NÚT
+    // ==========================================
+    async function analyzeImages() {
+        if (!imgInObj || !imgOutObj) {
+            alert("Vui lòng tải lên đủ cả hai hình ảnh VÀO và RA!");
+            return;
+        }
+
+        const btn = document.getElementById('checkButton');
+        btn.disabled = true;
+        btn.innerText = "ĐANG PHÂN TÍCH...";
+
+        // Reset canvas sạch trước khi vẽ mới
+        drawImageOnCanvas('canvasIn', imgInObj);
+        drawImageOnCanvas('canvasOut', imgOutObj);
+
+        try {
+            // Chạy phát hiện độc lập trên từng ảnh
+            await detectObjects(imgInObj, 'canvasIn');
+            await detectObjects(imgOutObj, 'canvasOut');
+        } catch (err) {
+            console.error("Lỗi khi quét ảnh:", err);
+            alert("Có lỗi xảy ra trong lúc quét. Vui lòng xem Console (F12).");
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "KÍCH HOẠT QUÉT ĐỐI TƯỢNG";
+        }
+    }
+</script>
+
+</body>
+</html>
