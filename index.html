@@ -7,20 +7,140 @@
     <!-- Tải thư viện ONNX Runtime Web từ CDN -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; margin: 0; padding: 20px; color: #1f2937; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #1e3a8a; margin-bottom: 5px; }
-        .subtitle { text-align: center; color: #6b7280; margin-bottom: 25px; font-size: 14px; }
-        .image-container { display: flex; gap: 20px; margin-bottom: 25px; }
-        .image-box { flex: 1; text-align: center; border: 2px dashed #d1d5db; padding: 15px; border-radius: 8px; background: #fafafa; position: relative; }
-        .image-box label { display: block; font-weight: bold; margin-bottom: 10px; color: #374151; }
-        canvas { max-width: 100%; border-radius: 6px; display: none; margin: 10px auto 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        button { background-color: #2563eb; color: white; border: none; padding: 14px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); }
+        /* Thiết lập box-sizing chung giúp kiểm soát padding và border không làm tràn khung */
+        * { 
+            box-sizing: border-box; 
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f3f4f6; 
+            margin: 0; 
+            padding: 20px; 
+            color: #1f2937; 
+        }
+        
+        .container { 
+            max-width: 1000px; 
+            margin: auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); 
+        }
+        
+        h2 { 
+            text-align: center; 
+            color: #1e3a8a; 
+            margin-bottom: 5px; 
+        }
+        
+        .subtitle { 
+            text-align: center; 
+            color: #6b7280; 
+            margin-bottom: 25px; 
+            font-size: 14px; 
+        }
+        
+        .image-container { 
+            display: flex; 
+            gap: 20px; 
+            margin-bottom: 25px; 
+        }
+        
+        .image-box { 
+            flex: 1; 
+            min-width: 0; /* Ngăn chặn flex item bị phình to hơn container */
+            text-align: center; 
+            border: 2px dashed #d1d5db; 
+            padding: 15px; 
+            border-radius: 8px; 
+            background: #fafafa; 
+            position: relative; 
+        }
+        
+        .image-box label { 
+            display: block; 
+            font-weight: bold; 
+            margin-bottom: 10px; 
+            color: #374151; 
+        }
+
+        .image-box input[type="file"] {
+            max-width: 100%; /* Đảm bảo nút chọn tệp không bị tràn ra ngoài */
+        }
+        
+        canvas { 
+            max-width: 100%; 
+            height: auto !important; /* Đảm bảo tỉ lệ ảnh giữ nguyên khi co giãn trên mobile */
+            border-radius: 6px; 
+            display: none; 
+            margin: 10px auto 0 auto; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+        }
+        
+        button { 
+            background-color: #2563eb; 
+            color: white; 
+            border: none; 
+            padding: 14px 20px; 
+            font-size: 16px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-weight: bold; 
+            transition: all 0.2s; 
+            box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); 
+        }
+        
         button:hover { background-color: #1d4ed8; }
         button:disabled { background-color: #93c5fd; cursor: not-allowed; }
-        .status-bar { text-align: center; margin-top: 15px; font-weight: 500; padding: 10px; border-radius: 6px; background-color: #e5e7eb; color: #374151; }
+        
+        .status-bar { 
+            text-align: center; 
+            margin-top: 15px; 
+            font-weight: 500; 
+            padding: 10px; 
+            border-radius: 6px; 
+            background-color: #e5e7eb; 
+            color: #374151; 
+        }
+        
         .status-ready { background-color: #dcfce7; color: #166534; }
         .status-error { background-color: #fee2e2; color: #991b1b; }
+
+        /* ==========================================
+           CẤU HÌNH RESPONSIVE CHO ĐIỆN THOẠI
+           ========================================== */
+        @media (max-width: 768px) {
+            body { 
+                padding: 10px; 
+            }
+            
+            .container { 
+                padding: 15px; 
+                border-radius: 8px; 
+            }
+            
+            .image-container { 
+                flex-direction: column; /* Chuyển từ hàng ngang sang hàng dọc */
+                gap: 15px; 
+            }
+            
+            h2 { 
+                font-size: 1.3rem; 
+            }
+            
+            .subtitle { 
+                font-size: 12px; 
+                margin-bottom: 15px; 
+            }
+            
+            button { 
+                padding: 12px 15px; 
+                font-size: 14px; 
+            }
+        }
     </style>
 </head>
 <body>
@@ -68,13 +188,13 @@
             session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['webgl', 'wasm'] });
             
             const statusDiv = document.getElementById('modelStatus');
-            statusDiv.textContent = "✅ Mô hình best.onnx đã sẵn sàng!";
+            statusDiv.textContent = "✅ Ứng dụng đã sẵn sàng!";
             statusDiv.classList.add('status-ready');
             document.getElementById('checkButton').disabled = false;
         } catch (error) {
             console.error(error);
             const statusDiv = document.getElementById('modelStatus');
-            statusDiv.textContent = "❌ Lỗi tải mô hình! Hãy kiểm tra xem file best.onnx đã có trong thư mục chưa và bạn đã chạy qua Local Server chưa.";
+            statusDiv.textContent = "❌ Lỗi tải mô hình! Hãy kiểm tra lại";
             statusDiv.classList.add('status-error');
         }
     }
