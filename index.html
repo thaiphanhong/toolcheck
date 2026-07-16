@@ -43,18 +43,20 @@
             font-size: 14px; 
         }
         
-        /* Bố cục dọc cho các ô ảnh */
+        /* ==========================================
+           CẤU HÌNH BỐ CỤC DỌC MỚI
+           ========================================== */
         .image-container { 
             display: flex; 
-            flex-direction: column; 
-            align-items: center; 
+            flex-direction: column; /* THAY ĐỔI: Luôn xếp dọc trên mọi thiết bị */
+            align-items: center; /* Căn giữa các ô ảnh */
             gap: 20px; 
             margin-bottom: 25px; 
         }
         
         .image-box { 
-            width: 100%; 
-            max-width: 600px; 
+            width: 100%; /* Ô ảnh rộng tối đa container cha */
+            max-width: 600px; /* Thêm max-width để trông cân đối hơn trên máy tính */
             min-width: 0; 
             text-align: center; 
             border: 2px dashed #d1d5db; 
@@ -72,13 +74,13 @@
         }
 
         .image-box input[type="file"] {
-            max-width: 100%; 
+            max-width: 100%; /* Đảm bảo nút chọn tệp không bị tràn ra ngoài */
             margin-bottom: 10px;
         }
         
         canvas { 
-            max-width: 100%; 
-            height: auto !important; 
+            max-width: 100%; /* Đảm bảo canvas không rộng quá ô chứa */
+            height: auto !important; /* Giữ tỷ lệ ảnh chuẩn khi co giãn */
             border-radius: 6px; 
             display: none; 
             margin: 10px auto 0 auto; 
@@ -97,7 +99,7 @@
             font-weight: bold; 
             transition: all 0.2s; 
             box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); 
-            max-width: 600px; 
+            max-width: 600px; /* Nút cũng được max-width cho cân đối khi xếp dọc */
             display: block;
             margin: 0 auto;
         }
@@ -121,6 +123,9 @@
         .status-ready { background-color: #dcfce7; color: #166534; }
         .status-error { background-color: #fee2e2; color: #991b1b; }
 
+        /* ==========================================
+           TINH CHỈNH RESPONSIVE CHO ĐIỆN THOẠI
+           ========================================== */
         @media (max-width: 768px) {
             body { 
                 padding: 10px; 
@@ -141,7 +146,7 @@
             }
             
             .image-container { 
-                gap: 15px; 
+                gap: 15px; /* Giảm gap trên di động */
             }
             
             button { 
@@ -181,10 +186,10 @@
     // ==========================================
     // CẤU HÌNH YOLOV8
     // ==========================================
-    const MODEL_PATH = "./best.onnx"; 
-    const CONFIDENCE_THRESHOLD = 0.5; 
-    const IOU_THRESHOLD = 0.45;       
-    const MODEL_INPUT_SIZE = 640;     
+    const MODEL_PATH = "./best.onnx"; // Đảm bảo file best.onnx nằm cùng thư mục với file HTML này
+    const CONFIDENCE_THRESHOLD = 0.5; // Ngưỡng tin cậy (50%)
+    const IOU_THRESHOLD = 0.45;       // Ngưỡng lọc NMS (Tránh vẽ nhiều khung đè lên 1 vật)
+    const MODEL_INPUT_SIZE = 640;     // Kích thước ảnh đầu vào chuẩn của YOLOv8
 
     let session = null;
     let imgInObj = null;
@@ -193,6 +198,7 @@
     // 1. KHỞI TẠO MÔ HÌNH ONNX
     async function initModel() {
         try {
+            // Cấu hình ort để chạy WebGL hoặc CPU
             ort.env.wasm.numThreads = 1; 
             session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['webgl', 'wasm'] });
             
@@ -208,6 +214,7 @@
         }
     }
 
+    // Chạy khởi tạo ngay khi tải trang
     window.onload = initModel;
 
     // 2. HIỂN THỊ ẢNH GỐC
@@ -247,6 +254,7 @@
 
     // 3. TIỀN XỬ LÝ ẢNH (Pre-processing) CHO YOLOV8
     function preprocessImage(imgObj) {
+        // Vẽ ảnh gốc lên 1 canvas ảo kích thước 640x640
         const canvas = document.createElement('canvas');
         canvas.width = MODEL_INPUT_SIZE;
         canvas.height = MODEL_INPUT_SIZE;
@@ -254,11 +262,12 @@
         ctx.drawImage(imgObj, 0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
         const imgData = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE).data;
 
+        // YOLOv8 yêu cầu mảng tensor [1, 3, 640, 640] dạng Float32, chuẩn hóa 0-1, kênh màu RGB (đã tách riêng)
         const float32Data = new Float32Array(3 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE);
         for (let i = 0; i < MODEL_INPUT_SIZE * MODEL_INPUT_SIZE; i++) {
-            float32Data[i] = imgData[i * 4] / 255.0;                                        
-            float32Data[i + MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 1] / 255.0;      
-            float32Data[i + 2 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 2] / 255.0;  
+            float32Data[i] = imgData[i * 4] / 255.0;                                        // Kênh R
+            float32Data[i + MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 1] / 255.0;      // Kênh G
+            float32Data[i + 2 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 2] / 255.0;  // Kênh B
         }
         return new ort.Tensor('float32', float32Data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
     }
@@ -269,22 +278,27 @@
 
         const tensor = preprocessImage(imgObj);
         
+        // Chạy qua mạng nơ-ron
         const feeds = {};
         feeds[session.inputNames[0]] = tensor;
         const results = await session.run(feeds);
         
+        // YOLOv8 output thường có shape: [1, 4 + classes, 8400]
         const outputTensor = results[session.outputNames[0]];
         const outputData = outputTensor.data;
         
-        const numClasses = outputTensor.dims[1] - 4; 
-        const numAnchors = outputTensor.dims[2];     
+        // Tính toán thông số đầu ra
+        const numClasses = outputTensor.dims[1] - 4; // Bỏ qua 4 tọa độ (x, y, w, h)
+        const numAnchors = outputTensor.dims[2];     // Thường là 8400
 
         let boxes = [];
 
+        // Duyệt qua 8400 hộp neo (anchors)
         for (let i = 0; i < numAnchors; i++) {
             let maxClassScore = 0;
             let classId = -1;
 
+            // Tìm class có độ tin cậy cao nhất tại anchor này
             for (let c = 0; c < numClasses; c++) {
                 let score = outputData[(4 + c) * numAnchors + i];
                 if (score > maxClassScore) {
@@ -293,12 +307,14 @@
                 }
             }
 
+            // Nếu vượt ngưỡng tin cậy
             if (maxClassScore >= CONFIDENCE_THRESHOLD) {
-                let xc = outputData[0 * numAnchors + i]; 
-                let yc = outputData[1 * numAnchors + i]; 
-                let w = outputData[2 * numAnchors + i];  
-                let h = outputData[3 * numAnchors + i];  
+                let xc = outputData[0 * numAnchors + i]; // Center x
+                let yc = outputData[1 * numAnchors + i]; // Center y
+                let w = outputData[2 * numAnchors + i];  // Width
+                let h = outputData[3 * numAnchors + i];  // Height
 
+                // Chuyển từ (xc, yc, w, h) sang (x1, y1, x2, y2) trên hệ quy chiếu 640x640
                 let x1 = xc - w / 2;
                 let y1 = yc - h / 2;
                 let x2 = xc + w / 2;
@@ -308,19 +324,24 @@
             }
         }
 
+        // Lọc các khung hình đè lên nhau (Non-Maximum Suppression - NMS)
         boxes = applyNMS(boxes, IOU_THRESHOLD);
+
+        // Vẽ lên Canvas
         drawBoxes(canvasId, imgObj, boxes);
     }
 
     // 5. THUẬT TOÁN NMS (Lọc khung trùng lặp)
     function applyNMS(boxes, iouThreshold) {
         if (boxes.length === 0) return [];
+        // Sắp xếp các hộp theo điểm tin cậy từ cao xuống thấp
         boxes.sort((a, b) => b.score - a.score);
         
         const selected = [];
         while (boxes.length > 0) {
             const current = boxes.shift();
             selected.push(current);
+            // Lọc những hộp còn lại nếu nó trùng diện tích quá nhiều với hộp vừa chọn
             boxes = boxes.filter(box => {
                 if (box.classId !== current.classId) return true;
                 const iou = calculateIoU(current, box);
@@ -333,8 +354,8 @@
     function calculateIoU(box1, box2) {
         const x_left = Math.max(box1.x1, box2.x1);
         const y_top = Math.max(box1.y1, box2.y1);
-        const x_right = Math.min(box1.x2, box2.x2); // ĐÃ SỬA: Min.min -> Math.min
-        const y_bottom = Math.min(box1.y2, box2.y2); // ĐÃ SỬA: Min.min -> Math.min
+        const x_right = Min.min(box1.x2, box2.x2);
+        const y_bottom = Min.min(box1.y2, box2.y2);
 
         if (x_right < x_left || y_bottom < y_top) return 0.0;
 
@@ -345,29 +366,12 @@
         return intersection / (area1 + area2 - intersection);
     }
 
-    // ==========================================
-    // HÀM ÁNH XẠ MÃ ĐỐI TƯỢNG (CLASS ID) -> TÊN NHÃN
-    // ==========================================
-    function getClassName(classId) {
-        if (classId >= 0 && classId <= 30) {
-            // Lớp 0 -> AL4_01, Lớp 30 -> AL4_31
-            const num = String(classId + 1).padStart(2, '0');
-            return `AL4_${num}`;
-        } else if (classId >= 31 && classId <= 54) {
-            // Lớp 31 -> AL4_mold_01, Lớp 54 -> AL4_mold_24
-            const num = String(classId - 30).padStart(2, '0');
-            return `AL4_mold_${num}`;
-        } else if (classId === 55) {
-            return 'AL4';
-        }
-        return `Unknown (${classId})`;
-    }
-
-    // 6. VẼ KHUNG ĐỊNH VỊ & NHÃN CHỮ
+    // 6. VẼ KHUNG ĐỊNH VỊ
     function drawBoxes(canvasId, imgObj, boxes) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
 
+        // Tỷ lệ scale từ 640x640 của mô hình về kích thước thực tế hiển thị trên canvas
         const scaleX = canvas.width / MODEL_INPUT_SIZE;
         const scaleY = canvas.height / MODEL_INPUT_SIZE;
 
@@ -377,32 +381,18 @@
             const w = (box.x2 - box.x1) * scaleX;
             const h = (box.y2 - box.y1) * scaleY;
 
-            // 1. Vẽ viền đỏ cho khung đối tượng
-            ctx.strokeStyle = '#dc2626'; 
+            ctx.strokeStyle = '#dc2626'; // Đỏ
             ctx.lineWidth = 3;
             ctx.strokeRect(x, y, w, h);
 
-            // 2. Thiết lập cấu hình chữ viết nhãn
-            const className = getClassName(box.classId);
-            const labelText = `${className} (${(box.score * 100).toFixed(0)}%)`;
-            
-            ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
-            ctx.textBaseline = 'top';
-
-            // Tính toán kích thước nền nhãn sao cho vừa khít với chữ
-            const textWidth = ctx.measureText(labelText).width + 10; // Thêm 10px khoảng đệm (padding)
-            const labelHeight = 22;
-
-            // Xử lý chống tràn nhãn: Nếu khung nằm sát mép trên cùng của ảnh, nhãn sẽ được vẽ bên dưới đường viền trên
-            const labelY = (y - labelHeight < 0) ? y : y - labelHeight;
-
-            // Vẽ hộp nền đỏ cho chữ nhãn
+            // Tùy chọn vẽ thêm Label: 
+            /*
             ctx.fillStyle = '#dc2626';
-            ctx.fillRect(x, labelY, textWidth, labelHeight);
-
-            // Ghi chữ màu trắng lên trên nền đỏ
+            ctx.fillRect(x, y - 20, 100, 20);
             ctx.fillStyle = 'white';
-            ctx.fillText(labelText, x + 5, labelY + 4);
+            ctx.font = '14px Arial';
+            ctx.fillText(`Lớp ${box.classId}: ${(box.score*100).toFixed(0)}%`, x + 5, y - 5);
+            */
         });
     }
 
@@ -419,10 +409,12 @@
         btn.disabled = true;
         btn.innerText = "ĐANG PHÂN TÍCH...";
 
+        // Reset canvas sạch trước khi vẽ mới
         drawImageOnCanvas('canvasIn', imgInObj);
         drawImageOnCanvas('canvasOut', imgOutObj);
 
         try {
+            // Chạy phát hiện độc lập trên từng ảnh
             await detectObjects(imgInObj, 'canvasIn');
             await detectObjects(imgOutObj, 'canvasOut');
         } catch (err) {
