@@ -105,6 +105,14 @@
         button:hover { background-color: #1d4ed8; }
         button:disabled { background-color: #93c5fd; cursor: not-allowed; }
         
+        /* CSS cho nút Lưu */
+        .btn-save {
+            background-color: #10b981; 
+            margin-top: 15px;
+            display: none; /* Ẩn đi khi chưa có kết quả */
+        }
+        .btn-save:hover { background-color: #059669; }
+
         .status-bar { 
             text-align: center; 
             margin-top: 15px; 
@@ -122,32 +130,12 @@
         .status-error { background-color: #fee2e2; color: #991b1b; }
 
         @media (max-width: 768px) {
-            body { 
-                padding: 10px; 
-            }
-            
-            .container { 
-                padding: 15px; 
-                border-radius: 8px; 
-            }
-            
-            h2 { 
-                font-size: 1.3rem; 
-            }
-            
-            .subtitle { 
-                font-size: 12px; 
-                margin-bottom: 15px; 
-            }
-            
-            .image-container { 
-                gap: 15px; 
-            }
-            
-            button { 
-                padding: 12px 15px; 
-                font-size: 14px; 
-            }
+            body { padding: 10px; }
+            .container { padding: 15px; border-radius: 8px; }
+            h2 { font-size: 1.3rem; }
+            .subtitle { font-size: 12px; margin-bottom: 15px; }
+            .image-container { gap: 15px; }
+            button { padding: 12px 15px; font-size: 14px; }
         }
     </style>
 </head>
@@ -175,16 +163,22 @@
     </div>
 
     <button id="checkButton" onclick="analyzeImages()" disabled>KÍCH HOẠT QUÉT ĐỐI TƯỢNG</button>
+    
+    <!-- Nút Lưu Kết Quả Mới Thêm -->
+    <button id="saveButton" class="btn-save" onclick="saveToSharePoint()">LƯU KẾT QUẢ (ĐẠT)</button>
 </div>
 
 <script>
     // ==========================================
-    // CẤU HÌNH YOLOV8
+    // CẤU HÌNH YOLOV8 & WEBHOOK
     // ==========================================
     const MODEL_PATH = "./best.onnx"; 
     const CONFIDENCE_THRESHOLD = 0.5; 
-    const IOU_THRESHOLD = 0.45;       
-    const MODEL_INPUT_SIZE = 640;     
+    const IOU_THRESHOLD = 0.45;        
+    const MODEL_INPUT_SIZE = 640;      
+
+    // Dán URL Webhook từ Power Automate của bạn vào đây
+    const SHAREPOINT_WEBHOOK_URL = "https://prod-xx.westeurope.logic.azure.com:443/workflows/xxxx..."; 
 
     let session = null;
     let imgInObj = null;
@@ -221,6 +215,9 @@
                     if (imgKey === 'in') imgInObj = img;
                     if (imgKey === 'out') imgOutObj = img;
                     drawImageOnCanvas(canvasId, img);
+                    
+                    // Ẩn nút lưu nếu chọn ảnh mới để bắt buộc phải quét lại
+                    document.getElementById('saveButton').style.display = 'none';
                 }
                 img.src = e.target.result;
             }
@@ -245,7 +242,7 @@
         ctx.drawImage(imgObj, 0, 0, width, height);
     }
 
-    // 3. TIỀN XỬ LÝ ẢNH (Pre-processing) CHO YOLOV8
+    // 3. TIỀN XỬ LÝ ẢNH
     function preprocessImage(imgObj) {
         const canvas = document.createElement('canvas');
         canvas.width = MODEL_INPUT_SIZE;
@@ -263,12 +260,11 @@
         return new ort.Tensor('float32', float32Data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
     }
 
-    // 4. CHẠY SUY LUẬN VÀ HẬU XỬ LÝ (Post-processing)
+    // 4. CHẠY SUY LUẬN VÀ HẬU XỬ LÝ
     async function detectObjects(imgObj, canvasId) {
         if (!session) return;
 
         const tensor = preprocessImage(imgObj);
-        
         const feeds = {};
         feeds[session.inputNames[0]] = tensor;
         const results = await session.run(feeds);
@@ -312,7 +308,7 @@
         drawBoxes(canvasId, imgObj, boxes);
     }
 
-    // 5. THUẬT TOÁN NMS (Lọc khung trùng lặp)
+    // 5. THUẬT TOÁN NMS
     function applyNMS(boxes, iouThreshold) {
         if (boxes.length === 0) return [];
         boxes.sort((a, b) => b.score - a.score);
@@ -333,8 +329,8 @@
     function calculateIoU(box1, box2) {
         const x_left = Math.max(box1.x1, box2.x1);
         const y_top = Math.max(box1.y1, box2.y1);
-        const x_right = Math.min(box1.x2, box2.x2); // ĐÃ SỬA: Min.min -> Math.min
-        const y_bottom = Math.min(box1.y2, box2.y2); // ĐÃ SỬA: Min.min -> Math.min
+        const x_right = Math.min(box1.x2, box2.x2); 
+        const y_bottom = Math.min(box1.y2, box2.y2); 
 
         if (x_right < x_left || y_bottom < y_top) return 0.0;
 
@@ -345,16 +341,12 @@
         return intersection / (area1 + area2 - intersection);
     }
 
-    // ==========================================
-    // HÀM ÁNH XẠ MÃ ĐỐI TƯỢNG (CLASS ID) -> TÊN NHÃN
-    // ==========================================
+    // HÀM ÁNH XẠ NHÃN
     function getClassName(classId) {
         if (classId >= 0 && classId <= 30) {
-            // Lớp 0 -> AL4_01, Lớp 30 -> AL4_31
             const num = String(classId + 1).padStart(2, '0');
             return `AL4_${num}`;
         } else if (classId >= 31 && classId <= 54) {
-            // Lớp 31 -> AL4_mold_01, Lớp 54 -> AL4_mold_24
             const num = String(classId - 30).padStart(2, '0');
             return `AL4_mold_${num}`;
         } else if (classId === 55) {
@@ -363,7 +355,7 @@
         return `Unknown (${classId})`;
     }
 
-    // 6. VẼ KHUNG ĐỊNH VỊ & NHÃN CHỮ
+    // 6. VẼ KHUNG ĐỊNH VỊ
     function drawBoxes(canvasId, imgObj, boxes) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
@@ -377,38 +369,28 @@
             const w = (box.x2 - box.x1) * scaleX;
             const h = (box.y2 - box.y1) * scaleY;
 
-            // 1. Vẽ viền đỏ cho khung đối tượng
             ctx.strokeStyle = '#dc2626'; 
             ctx.lineWidth = 3;
             ctx.strokeRect(x, y, w, h);
 
-            // 2. Thiết lập cấu hình chữ viết nhãn
             const className = getClassName(box.classId);
             const labelText = className;
             
             ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
             ctx.textBaseline = 'top';
 
-            // Tính toán kích thước nền nhãn sao cho vừa khít với chữ
-            const textWidth = ctx.measureText(labelText).width + 10; // Thêm 10px khoảng đệm (padding)
+            const textWidth = ctx.measureText(labelText).width + 10; 
             const labelHeight = 22;
-
-            // Xử lý chống tràn nhãn: Nếu khung nằm sát mép trên cùng của ảnh, nhãn sẽ được vẽ bên dưới đường viền trên
             const labelY = (y - labelHeight < 0) ? y : y - labelHeight;
 
-            // Vẽ hộp nền đỏ cho chữ nhãn
             ctx.fillStyle = '#dc2626';
             ctx.fillRect(x, labelY, textWidth, labelHeight);
-
-            // Ghi chữ màu trắng lên trên nền đỏ
             ctx.fillStyle = 'white';
             ctx.fillText(labelText, x + 5, labelY + 4);
         });
     }
 
-    // ==========================================
-    // LUỒNG CHẠY CHÍNH KHI NHẤN NÚT
-    // ==========================================
+    // LUỒNG CHẠY QUÉT
     async function analyzeImages() {
         if (!imgInObj || !imgOutObj) {
             alert("Vui lòng tải lên đủ cả hai hình ảnh VÀO và RA!");
@@ -425,12 +407,71 @@
         try {
             await detectObjects(imgInObj, 'canvasIn');
             await detectObjects(imgOutObj, 'canvasOut');
+            
+            // Xử lý thành công -> Hiển thị nút Lưu
+            const saveBtn = document.getElementById('saveButton');
+            saveBtn.style.display = 'block';
+            saveBtn.innerText = "LƯU KẾT QUẢ (ĐẠT)";
+            saveBtn.disabled = false;
+
         } catch (err) {
             console.error("Lỗi khi quét ảnh:", err);
             alert("Có lỗi xảy ra trong lúc quét. Vui lòng xem Console (F12).");
         } finally {
             btn.disabled = false;
             btn.innerText = "KÍCH HOẠT QUÉT ĐỐI TƯỢNG";
+        }
+    }
+
+    // ==========================================
+    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT (QUA WEBHOOK)
+    // ==========================================
+    async function saveToSharePoint() {
+        if (SHAREPOINT_WEBHOOK_URL.includes("THAY_LINK")) {
+            alert("Bạn cần phải cập nhật SHAREPOINT_WEBHOOK_URL trong mã nguồn trước!");
+            return;
+        }
+
+        const btnSave = document.getElementById('saveButton');
+        btnSave.innerText = "ĐANG GỬI DỮ LIỆU...";
+        btnSave.disabled = true;
+
+        // Trích xuất ảnh từ Canvas dưới dạng Base64 (ảnh đã có khung đỏ)
+        const canvasIn = document.getElementById('canvasIn');
+        const canvasOut = document.getElementById('canvasOut');
+        
+        // Cắt bỏ phần tiền tố "data:image/jpeg;base64," để SharePoint dễ xử lý
+        const base64In = canvasIn.toDataURL('image/jpeg', 0.8).split(',')[1];
+        const base64Out = canvasOut.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+        // Đóng gói JSON
+        const payload = {
+            status: "Đạt",
+            timestamp: new Date().toISOString(),
+            imageIn_Base64: base64In,
+            imageOut_Base64: base64Out
+        };
+
+        try {
+            const response = await fetch(SHAREPOINT_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok || response.status === 202) {
+                alert("Đã lưu thành công vào SharePoint!");
+                btnSave.innerText = "ĐÃ LƯU THÀNH CÔNG ✓";
+            } else {
+                alert("Gặp lỗi khi lưu lên máy chủ: " + response.statusText);
+                btnSave.innerText = "THỬ LƯU LẠI";
+                btnSave.disabled = false;
+            }
+        } catch (error) {
+            console.error("Lỗi mạng:", error);
+            alert("Không thể kết nối đến máy chủ SharePoint/Power Automate.");
+            btnSave.innerText = "LƯU KẾT QUẢ (ĐẠT)";
+            btnSave.disabled = false;
         }
     }
 </script>
