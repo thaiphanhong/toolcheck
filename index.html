@@ -188,7 +188,7 @@
     async function initModel() {
         try {
             ort.env.wasm.numThreads = 1; 
-            session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['webgl', 'wasm'] });
+            session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['wasm'] });
             
             const statusDiv = document.getElementById('modelStatus');
             statusDiv.textContent = "✅ Ứng dụng đã sẵn sàng!";
