@@ -207,43 +207,40 @@
     // 2. HIỂN THỊ ẢNH GỐC
     function previewImage(event, canvasId, imgKey) {
         const file = event.target.files[0];
-        if (file) {
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
             const img = new Image();
             img.onload = function() {
+                // Lưu đối tượng ảnh vào biến toàn cục để chạy AI sau này
                 if (imgKey === 'in') imgInObj = img;
                 if (imgKey === 'out') imgOutObj = img;
+
+                // Vẽ và thu nhỏ ảnh lên Canvas
                 drawImageOnCanvas(canvasId, img);
-                
-                // Ẩn nút lưu nếu chọn ảnh mới để bắt buộc phải quét lại
-                document.getElementById('saveButton').style.display = 'none';
 
-                // Giải phóng bộ nhớ sau khi load xong (Rất quan trọng cho iOS)
-                URL.revokeObjectURL(img.src);
-            }
-            
-            // Bắt lỗi nếu iOS không thể load ảnh
-            img.onerror = function() {
-                alert("Không thể tải ảnh. Vui lòng thử lại!");
-            }
-
-            // Dùng createObjectURL thay vì FileReader
-            img.src = URL.createObjectURL(file);
-        }
+                // Ẩn nút lưu nếu có chọn ảnh mới
+                const saveBtn = document.getElementById('saveButton');
+                if (saveBtn) saveBtn.style.display = 'none';
+            };
+            img.src = e.target.result; // Chuyển thành DataURL giúp Safari vẽ Canvas cực kỳ ổn định
+        };
+        reader.readAsDataURL(file);
     }
 
+    // 2. VẼ ẢNH LÊN CANVAS VÀ THU NHỎ (Chống tràn RAM)
     function drawImageOnCanvas(canvasId, img) {
         const canvas = document.getElementById(canvasId);
-        // Thêm willReadFrequently: true để tối ưu hóa bộ nhớ khi dùng với AI
-        const ctx = canvas.getContext('2d', { willReadFrequently: true }); 
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-        // Đặt kích thước tối đa (640 là chuẩn chung của đa số model YOLO)
+        // Giới hạn độ phân giải tối đa 640px để nhẹ RAM và đúng chuẩn AI
         const MAX_WIDTH = 640;
         const MAX_HEIGHT = 640;
-        
+
         let width = img.width;
         let height = img.height;
 
-        // Tính toán lại kích thước để giữ nguyên tỷ lệ khung hình
         if (width > height) {
             if (width > MAX_WIDTH) {
                 height = Math.round(height * (MAX_WIDTH / width));
@@ -256,12 +253,12 @@
             }
         }
 
-        // Gán kích thước mới cho canvas
+        // Gán kích thước mới cho Canvas
         canvas.width = width;
         canvas.height = height;
 
-        // Xóa khung vẽ cũ và vẽ ảnh đã thu nhỏ lên
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Xóa khung cũ và vẽ ảnh mới
+        ctx.clearRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
     }
 
