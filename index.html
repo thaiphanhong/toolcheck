@@ -231,21 +231,38 @@
         }
     }
 
-    function drawImageOnCanvas(canvasId, imgObj) {
+    function drawImageOnCanvas(canvasId, img) {
         const canvas = document.getElementById(canvasId);
-        const ctx = canvas.getContext('2d');
-        const maxDim = 600;
-        let width = imgObj.width;
-        let height = imgObj.height;
+        // Thêm willReadFrequently: true để tối ưu hóa bộ nhớ khi dùng với AI
+        const ctx = canvas.getContext('2d', { willReadFrequently: true }); 
 
-        if (width > maxDim || height > maxDim) {
-            if (width > height) { height = (maxDim / width) * height; width = maxDim; } 
-            else { width = (maxDim / height) * width; height = maxDim; }
+        // Đặt kích thước tối đa (640 là chuẩn chung của đa số model YOLO)
+        const MAX_WIDTH = 640;
+        const MAX_HEIGHT = 640;
+        
+        let width = img.width;
+        let height = img.height;
+
+        // Tính toán lại kích thước để giữ nguyên tỷ lệ khung hình
+        if (width > height) {
+            if (width > MAX_WIDTH) {
+                height = Math.round(height * (MAX_WIDTH / width));
+                width = MAX_WIDTH;
+            }
+        } else {
+            if (height > MAX_HEIGHT) {
+                width = Math.round(width * (MAX_HEIGHT / height));
+                height = MAX_HEIGHT;
+            }
         }
+
+        // Gán kích thước mới cho canvas
         canvas.width = width;
         canvas.height = height;
-        canvas.style.display = 'block';
-        ctx.drawImage(imgObj, 0, 0, width, height);
+
+        // Xóa khung vẽ cũ và vẽ ảnh đã thu nhỏ lên
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, width, height);
     }
 
     // 3. TIỀN XỬ LÝ ẢNH
