@@ -151,16 +151,16 @@
         <!-- Phần 1: Ảnh lúc VÀO -->
         <div class="image-box">
             <label>1. Ảnh chụp lúc VÀO (Check-in)</label>
-            <input type="file" id="imageIn" accept="image/*" onchange="previewImage(event, 'canvasIn', 'in')">
+            <input type="file" id="imageIn" accept="image/jpeg, image/png, image/jpg" capture="environment" onchange="previewImage(event, 'canvasIn', 'in')">
             <canvas id="canvasIn"></canvas>
         </div>
+
         <!-- Phần 2: Ảnh lúc RA -->
         <div class="image-box">
             <label>2. Ảnh chụp lúc RA (Check-out)</label>
-            <input type="file" id="imageOut" accept="image/*" onchange="previewImage(event, 'canvasOut', 'out')">
+            <input type="file" id="imageOut" accept="image/jpeg, image/png, image/jpg" capture="environment" onchange="previewImage(event, 'canvasOut', 'out')">
             <canvas id="canvasOut"></canvas>
         </div>
-    </div>
 
     <button id="checkButton" onclick="analyzeImages()" disabled>KÍCH HOẠT QUÉT ĐỐI TƯỢNG</button>
     
@@ -208,20 +208,26 @@
     function previewImage(event, canvasId, imgKey) {
         const file = event.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = new Image();
-                img.onload = function() {
-                    if (imgKey === 'in') imgInObj = img;
-                    if (imgKey === 'out') imgOutObj = img;
-                    drawImageOnCanvas(canvasId, img);
-                    
-                    // Ẩn nút lưu nếu chọn ảnh mới để bắt buộc phải quét lại
-                    document.getElementById('saveButton').style.display = 'none';
-                }
-                img.src = e.target.result;
+            const img = new Image();
+            img.onload = function() {
+                if (imgKey === 'in') imgInObj = img;
+                if (imgKey === 'out') imgOutObj = img;
+                drawImageOnCanvas(canvasId, img);
+                
+                // Ẩn nút lưu nếu chọn ảnh mới để bắt buộc phải quét lại
+                document.getElementById('saveButton').style.display = 'none';
+
+                // Giải phóng bộ nhớ sau khi load xong (Rất quan trọng cho iOS)
+                URL.revokeObjectURL(img.src);
             }
-            reader.readAsDataURL(file);
+            
+            // Bắt lỗi nếu iOS không thể load ảnh
+            img.onerror = function() {
+                alert("Không thể tải ảnh. Vui lòng thử lại!");
+            }
+
+            // Dùng createObjectURL thay vì FileReader
+            img.src = URL.createObjectURL(file);
         }
     }
 
