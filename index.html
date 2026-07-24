@@ -3,42 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Vision - Kiểm Soát Thiếu Hụt Dụng Cụ</title>
+    <title>AI Vision - Chạy YOLOv8 ONNX Local (Dọc)</title>
+    <!-- Tải thư viện ONNX Runtime Web từ CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; margin: 0; padding: 20px; color: #1f2937; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #1e3a8a; margin-bottom: 5px; }
-        .subtitle { text-align: center; color: #6b7280; margin-bottom: 25px; font-size: 14px; }
-        .image-container { display: flex; gap: 20px; margin-bottom: 25px; }
-        .image-box { flex: 1; text-align: center; border: 2px dashed #d1d5db; padding: 15px; border-radius: 8px; background: #fafafa; }
-        .image-box label { display: block; font-weight: bold; margin-bottom: 10px; color: #374151; }
-        canvas { max-width: 100%; border-radius: 6px; display: none; margin: 10px auto 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        button { background-color: #2563eb; color: white; border: none; padding: 14px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); }
+        /* Thiết lập box-sizing chung giúp kiểm soát padding và border không làm tràn khung */
+        * { 
+            box-sizing: border-box; 
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f3f4f6; 
+            margin: 0; 
+            padding: 20px; 
+            color: #1f2937; 
+            overflow-x: hidden; /* Ngăn chặn cuộn ngang body */
+        }
+        
+        .container { 
+            max-width: 1000px; 
+            margin: auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); 
+        }
+        
+        h2 { 
+            text-align: center; 
+            color: #1e3a8a; 
+            margin-bottom: 5px; 
+        }
+        
+        .subtitle { 
+            text-align: center; 
+            color: #6b7280; 
+            margin-bottom: 25px; 
+            font-size: 14px; 
+        }
+        
+        /* Bố cục dọc cho các ô ảnh */
+        .image-container { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 20px; 
+            margin-bottom: 25px; 
+        }
+        
+        .image-box { 
+            width: 100%; 
+            max-width: 600px; 
+            min-width: 0; 
+            text-align: center; 
+            border: 2px dashed #d1d5db; 
+            padding: 15px; 
+            border-radius: 8px; 
+            background: #fafafa; 
+            position: relative; 
+        }
+        
+        .image-box label { 
+            display: block; 
+            font-weight: bold; 
+            margin-bottom: 10px; 
+            color: #374151; 
+        }
+
+        .image-box input[type="file"] {
+            max-width: 100%; 
+            margin-bottom: 10px;
+        }
+        
+        canvas { 
+            max-width: 100%; 
+            height: auto !important; 
+            border-radius: 6px; 
+            display: none; 
+            margin: 10px auto 0 auto; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); 
+        }
+        
+        button { 
+            background-color: #2563eb; 
+            color: white; 
+            border: none; 
+            padding: 14px 20px; 
+            font-size: 16px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-weight: bold; 
+            transition: all 0.2s; 
+            box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); 
+            max-width: 600px; 
+            display: block;
+            margin: 0 auto;
+        }
+        
         button:hover { background-color: #1d4ed8; }
         button:disabled { background-color: #93c5fd; cursor: not-allowed; }
-        .loader { display: none; text-align: center; margin-top: 15px; font-style: italic; color: #4b5563; font-weight: 500; }
         
-        /* Trực quan hóa kết quả nhận diện */
-        #result-card { display: none; margin-top: 30px; padding: 20px; border-radius: 8px; border-left: 8px solid; }
-        .status-ok { background-color: #f0fdf4; border-color: #16a34a; color: #14532d; }
-        .status-missing { background-color: #fef2f2; border-color: #dc2626; color: #991b1b; } /* Thêm style cảnh báo thiếu đồ */
+        /* CSS cho nút Lưu */
+        .btn-save {
+            background-color: #10b981; 
+            margin-top: 15px;
+            display: none; /* Ẩn đi khi chưa có kết quả */
+        }
+        .btn-save:hover { background-color: #059669; }
+
+        .status-bar { 
+            text-align: center; 
+            margin-top: 15px; 
+            font-weight: 500; 
+            padding: 10px; 
+            border-radius: 6px; 
+            background-color: #e5e7eb; 
+            color: #374151; 
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
         
-        .status-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; }
-        .status-desc { font-size: 15px; line-height: 1.6; white-space: pre-wrap; }
+        .status-ready { background-color: #dcfce7; color: #166534; }
+        .status-error { background-color: #fee2e2; color: #991b1b; }
+
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .container { padding: 15px; border-radius: 8px; }
+            h2 { font-size: 1.3rem; }
+            .subtitle { font-size: 12px; margin-bottom: 15px; }
+            .image-container { gap: 15px; }
+            button { padding: 12px 15px; font-size: 14px; }
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Trạm Nhận Diện Dụng Cụ Bằng AI Vision</h2>
-    <div class="subtitle">So sánh tự động ảnh Check-in và Check-out để phát hiện mất mát</div>
+    <h2>Trạm Kiểm Soát Dụng Cụ - AI Cục Bộ</h2>
+    <div class="subtitle">Phát hiện đối tượng bằng mô hình YOLOv8 (.onnx) chạy trực tiếp trên trình duyệt</div>
+
+    <div id="modelStatus" class="status-bar">Đang tải mô hình ONNX... Vui lòng đợi!</div>
 
     <div class="image-container">
+        <!-- Phần 1: Ảnh lúc VÀO -->
         <div class="image-box">
             <label>1. Ảnh chụp lúc VÀO (Check-in)</label>
             <input type="file" id="imageIn" accept="image/*" onchange="previewImage(event, 'canvasIn', 'in')">
             <canvas id="canvasIn"></canvas>
         </div>
+        <!-- Phần 2: Ảnh lúc RA -->
         <div class="image-box">
             <label>2. Ảnh chụp lúc RA (Check-out)</label>
             <input type="file" id="imageOut" accept="image/*" onchange="previewImage(event, 'canvasOut', 'out')">
@@ -46,24 +162,49 @@
         </div>
     </div>
 
-    <button id="checkButton" onclick="analyzeImages()">KIỂM TRA & SO SÁNH DỤNG CỤ</button>
-    <div class="loader" id="loader">AI đang phân tích cả 2 ảnh và đối chiếu số lượng...</div>
-
-    <div id="result-card">
-        <div class="status-title" id="res-title">Trạng thái</div>
-        <div class="status-desc" id="res-desc">Mô tả chi tiết</div>
-    </div>
+    <button id="checkButton" onclick="analyzeImages()" disabled>KÍCH HOẠT QUÉT ĐỐI TƯỢNG</button>
+    
+    <!-- Nút Lưu Kết Quả Mới Thêm -->
+    <button id="saveButton" class="btn-save" onclick="saveToSharePoint()">LƯU KẾT QUẢ (ĐẠT)</button>
 </div>
 
 <script>
     // ==========================================
-    // CẤU HÌNH API KEY TẠI ĐÂY
+    // CẤU HÌNH YOLOV8 & WEBHOOK
     // ==========================================
-    const GEMINI_API_KEY = "AIzaSyBzFCl4jIorFMHSLuNFjTaDVG2KloUgePY"; // Khuyến cáo: cẩn thận khi chia sẻ Key này công khai.
+    const MODEL_PATH = "./best.onnx"; 
+    const CONFIDENCE_THRESHOLD = 0.5; 
+    const IOU_THRESHOLD = 0.45;        
+    const MODEL_INPUT_SIZE = 640;      
 
+    // Dán URL Webhook từ Power Automate của bạn vào đây
+    const SHAREPOINT_WEBHOOK_URL = "https://prod-xx.westeurope.logic.azure.com:443/workflows/xxxx..."; 
+
+    let session = null;
     let imgInObj = null;
     let imgOutObj = null;
 
+    // 1. KHỞI TẠO MÔ HÌNH ONNX
+    async function initModel() {
+        try {
+            ort.env.wasm.numThreads = 1; 
+            session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['webgl', 'wasm'] });
+            
+            const statusDiv = document.getElementById('modelStatus');
+            statusDiv.textContent = "✅ Ứng dụng đã sẵn sàng!";
+            statusDiv.classList.add('status-ready');
+            document.getElementById('checkButton').disabled = false;
+        } catch (error) {
+            console.error(error);
+            const statusDiv = document.getElementById('modelStatus');
+            statusDiv.textContent = "❌ Lỗi tải mô hình! Hãy kiểm tra lại";
+            statusDiv.classList.add('status-error');
+        }
+    }
+
+    window.onload = initModel;
+
+    // 2. HIỂN THỊ ẢNH GỐC
     function previewImage(event, canvasId, imgKey) {
         const file = event.target.files[0];
         if (file) {
@@ -74,6 +215,9 @@
                     if (imgKey === 'in') imgInObj = img;
                     if (imgKey === 'out') imgOutObj = img;
                     drawImageOnCanvas(canvasId, img);
+                    
+                    // Ẩn nút lưu nếu chọn ảnh mới để bắt buộc phải quét lại
+                    document.getElementById('saveButton').style.display = 'none';
                 }
                 img.src = e.target.result;
             }
@@ -84,7 +228,7 @@
     function drawImageOnCanvas(canvasId, imgObj) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
-        const maxDim = 500;
+        const maxDim = 600;
         let width = imgObj.width;
         let height = imgObj.height;
 
@@ -98,152 +242,236 @@
         ctx.drawImage(imgObj, 0, 0, width, height);
     }
 
-    function drawAlertBox(canvasId, imgObj, box, isMissing = false) {
+    // 3. TIỀN XỬ LÝ ẢNH
+    function preprocessImage(imgObj) {
+        const canvas = document.createElement('canvas');
+        canvas.width = MODEL_INPUT_SIZE;
+        canvas.height = MODEL_INPUT_SIZE;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imgObj, 0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+        const imgData = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE).data;
+
+        const float32Data = new Float32Array(3 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE);
+        for (let i = 0; i < MODEL_INPUT_SIZE * MODEL_INPUT_SIZE; i++) {
+            float32Data[i] = imgData[i * 4] / 255.0;                                        
+            float32Data[i + MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 1] / 255.0;      
+            float32Data[i + 2 * MODEL_INPUT_SIZE * MODEL_INPUT_SIZE] = imgData[i * 4 + 2] / 255.0;  
+        }
+        return new ort.Tensor('float32', float32Data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
+    }
+
+    // 4. CHẠY SUY LUẬN VÀ HẬU XỬ LÝ
+    async function detectObjects(imgObj, canvasId) {
+        if (!session) return;
+
+        const tensor = preprocessImage(imgObj);
+        const feeds = {};
+        feeds[session.inputNames[0]] = tensor;
+        const results = await session.run(feeds);
+        
+        const outputTensor = results[session.outputNames[0]];
+        const outputData = outputTensor.data;
+        
+        const numClasses = outputTensor.dims[1] - 4; 
+        const numAnchors = outputTensor.dims[2];     
+
+        let boxes = [];
+
+        for (let i = 0; i < numAnchors; i++) {
+            let maxClassScore = 0;
+            let classId = -1;
+
+            for (let c = 0; c < numClasses; c++) {
+                let score = outputData[(4 + c) * numAnchors + i];
+                if (score > maxClassScore) {
+                    maxClassScore = score;
+                    classId = c;
+                }
+            }
+
+            if (maxClassScore >= CONFIDENCE_THRESHOLD) {
+                let xc = outputData[0 * numAnchors + i]; 
+                let yc = outputData[1 * numAnchors + i]; 
+                let w = outputData[2 * numAnchors + i];  
+                let h = outputData[3 * numAnchors + i];  
+
+                let x1 = xc - w / 2;
+                let y1 = yc - h / 2;
+                let x2 = xc + w / 2;
+                let y2 = yc + h / 2;
+
+                boxes.push({ x1, y1, x2, y2, score: maxClassScore, classId: classId });
+            }
+        }
+
+        boxes = applyNMS(boxes, IOU_THRESHOLD);
+        drawBoxes(canvasId, imgObj, boxes);
+    }
+
+    // 5. THUẬT TOÁN NMS
+    function applyNMS(boxes, iouThreshold) {
+        if (boxes.length === 0) return [];
+        boxes.sort((a, b) => b.score - a.score);
+        
+        const selected = [];
+        while (boxes.length > 0) {
+            const current = boxes.shift();
+            selected.push(current);
+            boxes = boxes.filter(box => {
+                if (box.classId !== current.classId) return true;
+                const iou = calculateIoU(current, box);
+                return iou < iouThreshold;
+            });
+        }
+        return selected;
+    }
+
+    function calculateIoU(box1, box2) {
+        const x_left = Math.max(box1.x1, box2.x1);
+        const y_top = Math.max(box1.y1, box2.y1);
+        const x_right = Math.min(box1.x2, box2.x2); 
+        const y_bottom = Math.min(box1.y2, box2.y2); 
+
+        if (x_right < x_left || y_bottom < y_top) return 0.0;
+
+        const intersection = (x_right - x_left) * (y_bottom - y_top);
+        const area1 = (box1.x2 - box1.x1) * (box1.y2 - box1.y1);
+        const area2 = (box2.x2 - box2.x1) * (box2.y2 - box2.y1);
+        
+        return intersection / (area1 + area2 - intersection);
+    }
+
+    // HÀM ÁNH XẠ NHÃN
+    function getClassName(classId) {
+        if (classId >= 0 && classId <= 30) {
+            const num = String(classId + 1).padStart(2, '0');
+            return `AL4_${num}`;
+        } else if (classId >= 31 && classId <= 54) {
+            const num = String(classId - 30).padStart(2, '0');
+            return `AL4_mold_${num}`;
+        } else if (classId === 55) {
+            return 'AL4';
+        }
+        return `Unknown (${classId})`;
+    }
+
+    // 6. VẼ KHUNG ĐỊNH VỊ
+    function drawBoxes(canvasId, imgObj, boxes) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
-        const [ymin, xmin, ymax, xmax] = box;
-        const x = (xmin / 1000) * canvas.width;
-        const y = (ymin / 1000) * canvas.height;
-        const w = ((xmax - xmin) / 1000) * canvas.width;
-        const h = ((ymax - ymin) / 1000) * canvas.height;
 
-        // Nếu là công cụ bình thường vẽ màu xanh, nếu cần chú ý có thể đổi màu khác
-        ctx.strokeStyle = '#2563eb'; 
-        ctx.lineWidth = 4;
-        ctx.strokeRect(x, y, w, h);
-    }
+        const scaleX = canvas.width / MODEL_INPUT_SIZE;
+        const scaleY = canvas.height / MODEL_INPUT_SIZE;
 
-    function getBase64(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => {
-                let encoded = reader.result.toString().replace(/^data:(.*,)?/, '');
-                if ((encoded.length % 4) > 0) { encoded += '='.repeat(4 - (encoded.length % 4)); }
-                resolve(encoded);
-            };
-            reader.onerror = error => reject(error);
+        boxes.forEach(box => {
+            const x = box.x1 * scaleX;
+            const y = box.y1 * scaleY;
+            const w = (box.x2 - box.x1) * scaleX;
+            const h = (box.y2 - box.y1) * scaleY;
+
+            ctx.strokeStyle = '#dc2626'; 
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, w, h);
+
+            const className = getClassName(box.classId);
+            const labelText = className;
+            
+            ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
+            ctx.textBaseline = 'top';
+
+            const textWidth = ctx.measureText(labelText).width + 10; 
+            const labelHeight = 22;
+            const labelY = (y - labelHeight < 0) ? y : y - labelHeight;
+
+            ctx.fillStyle = '#dc2626';
+            ctx.fillRect(x, labelY, textWidth, labelHeight);
+            ctx.fillStyle = 'white';
+            ctx.fillText(labelText, x + 5, labelY + 4);
         });
     }
 
-    // ==========================================
-    // GỬI 2 ẢNH CÙNG LÚC ĐỂ GEMINI SO SÁNH
-    // ==========================================
-    async function compareToolsWithAI(base64In, mimeIn, base64Out, mimeOut) {
-        const promptText = `Nhiệm vụ của bạn là so sánh 2 bức ảnh để kiểm tra xem lúc RA có bị thiếu dụng cụ nào so với lúc VÀO không.
-1. Nhận diện và lấy tọa độ (box) tất cả các dụng cụ trong Ảnh VÀO.
-2. Nhận diện và lấy tọa độ (box) tất cả các dụng cụ trong Ảnh RA.
-3. So sánh 2 danh sách: Liệt kê các dụng cụ có trong Ảnh VÀO nhưng KHÔNG xuất hiện trong Ảnh RA.
-
-Trả về ĐÚNG MỘT đối tượng JSON có cấu trúc sau:
-{
-  "tools_in": [ { "name": "Tên dụng cụ", "box": [ymin, xmin, ymax, xmax] } ],
-  "tools_out": [ { "name": "Tên dụng cụ", "box": [ymin, xmin, ymax, xmax] } ],
-  "missing_tools": [ "Tên dụng cụ bị thiếu 1", "Tên dụng cụ bị thiếu 2" ],
-  "status": "OK" (nếu số lượng bảo toàn) hoặc "MISSING" (nếu có dụng cụ bị thiếu)
-}
-Quy ước tọa độ "box": 4 số nguyên từ 0 đến 1000.`;
-
-        const requestBody = {
-            contents: [{
-                parts: [
-                    { text: "Đây là bức ảnh chụp dụng cụ lúc VÀO (Check-in):" },
-                    { inlineData: { mimeType: mimeIn, data: base64In } },
-                    { text: "Đây là bức ảnh chụp dụng cụ lúc RA (Check-out):" },
-                    { inlineData: { mimeType: mimeOut, data: base64Out } },
-                    { text: promptText }
-                ]
-            }],
-            generationConfig: { 
-                responseMimeType: "application/json",
-                temperature: 0.1 // Giữ nhiệt độ thấp để tăng tính chính xác logic
-            }
-        };
-
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-        });
-
-        const data = await response.json();
-        if (data.error) throw new Error(data.error.message);
-        
-        return JSON.parse(data.candidates[0].content.parts[0].text);
-    }
-
+    // LUỒNG CHẠY QUÉT
     async function analyzeImages() {
-        if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("DÁN_")) {
-            alert("Vui lòng mở file code lên và cấu hình khóa API Key!");
+        if (!imgInObj || !imgOutObj) {
+            alert("Vui lòng tải lên đủ cả hai hình ảnh VÀO và RA!");
             return;
         }
 
-        const fileIn = document.getElementById('imageIn').files[0];
-        const fileOut = document.getElementById('imageOut').files[0];
+        const btn = document.getElementById('checkButton');
+        btn.disabled = true;
+        btn.innerText = "ĐANG PHÂN TÍCH...";
 
-        if (!fileIn || !fileOut) { alert("Vui lòng tải lên cả hai hình ảnh!"); return; }
-
-        document.getElementById('checkButton').disabled = true;
-        document.getElementById('loader').style.display = 'block';
-        document.getElementById('result-card').style.display = 'none';
-
-        // Làm sạch canvas trước khi vẽ đè
         drawImageOnCanvas('canvasIn', imgInObj);
         drawImageOnCanvas('canvasOut', imgOutObj);
 
         try {
-            const base64In = await getBase64(fileIn);
-            const base64Out = await getBase64(fileOut);
+            await detectObjects(imgInObj, 'canvasIn');
+            await detectObjects(imgOutObj, 'canvasOut');
+            
+            // Xử lý thành công -> Hiển thị nút Lưu
+            const saveBtn = document.getElementById('saveButton');
+            saveBtn.style.display = 'block';
+            saveBtn.innerText = "LƯU KẾT QUẢ (ĐẠT)";
+            saveBtn.disabled = false;
 
-            // Gửi API duy nhất 1 lần chứa cả 2 ảnh
-            const aiResult = await compareToolsWithAI(base64In, fileIn.type, base64Out, fileOut.type);
-
-            // Vẽ khung tọa độ lên Ảnh Vào
-            if (aiResult.tools_in && aiResult.tools_in.length > 0) {
-                aiResult.tools_in.forEach(item => {
-                    if (item.box && item.box.length === 4) drawAlertBox('canvasIn', imgInObj, item.box);
-                });
-            }
-
-            // Vẽ khung tọa độ lên Ảnh Ra
-            if (aiResult.tools_out && aiResult.tools_out.length > 0) {
-                aiResult.tools_out.forEach(item => {
-                    if (item.box && item.box.length === 4) drawAlertBox('canvasOut', imgOutObj, item.box);
-                });
-            }
-
-            // Hiển thị kết quả so sánh
-            displayResults(aiResult);
-
-        } catch (error) {
-            alert("Đã xảy ra lỗi: " + error.message);
+        } catch (err) {
+            console.error("Lỗi khi quét ảnh:", err);
+            alert("Có lỗi xảy ra trong lúc quét. Vui lòng xem Console (F12).");
         } finally {
-            document.getElementById('checkButton').disabled = false;
-            document.getElementById('loader').style.display = 'none';
+            btn.disabled = false;
+            btn.innerText = "KÍCH HOẠT QUÉT ĐỐI TƯỢNG";
         }
     }
 
-    function displayResults(data) {
-        const resultCard = document.getElementById('result-card');
-        const resTitle = document.getElementById('res-title');
-        const resDesc = document.getElementById('res-desc');
+    // ==========================================
+    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT (QUA WEBHOOK)
+    // ==========================================
+    async function saveToSharePoint() {
+        if (SHAREPOINT_WEBHOOK_URL.includes("THAY_LINK")) {
+            alert("Bạn cần phải cập nhật SHAREPOINT_WEBHOOK_URL trong mã nguồn trước!");
+            return;
+        }
 
-        resultCard.className = '';
-        resultCard.style.display = 'block';
+        const btnSave = document.getElementById('saveButton');
+        btnSave.innerText = "ĐANG GỬI DỮ LIỆU...";
+        btnSave.disabled = true;
 
-        if (data.status === 'MISSING' || (data.missing_tools && data.missing_tools.length > 0)) {
-            resultCard.classList.add('status-missing');
-            resTitle.innerHTML = '🔴 CẢNH BÁO: PHÁT HIỆN THIẾU DỤNG CỤ!';
-            
-            const missingList = data.missing_tools.length > 0 ? data.missing_tools.join(', ') : "Không xác định rõ tên";
-            resDesc.innerHTML = `<b>Dụng cụ nghi ngờ thất lạc:</b> ${missingList}<br><br>` + 
-                                `<b>Thống kê chi tiết:</b><br>` +
-                                `- Số lượng lúc vào: ${data.tools_in.length}<br>` + 
-                                `- Số lượng lúc ra: ${data.tools_out.length}`;
-        } else {
-            resultCard.classList.add('status-ok');
-            resTitle.innerHTML = '🟢 HỢP LỆ: ĐẦY ĐỦ DỤNG CỤ';
-            resDesc.innerHTML = `Tuyệt vời! Toàn bộ ${data.tools_in.length} dụng cụ mang vào đều được thu hồi đầy đủ khi ra.`;
+        // Trích xuất ảnh từ Canvas dưới dạng Base64 (ảnh đã có khung đỏ)
+        const canvasIn = document.getElementById('canvasIn');
+        const canvasOut = document.getElementById('canvasOut');
+        
+        // Cắt bỏ phần tiền tố "data:image/jpeg;base64," để SharePoint dễ xử lý
+        const base64In = canvasIn.toDataURL('image/jpeg', 0.8).split(',')[1];
+        const base64Out = canvasOut.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+        // Đóng gói JSON
+        const payload = {
+            status: "Đạt",
+            timestamp: new Date().toISOString(),
+            imageIn_Base64: base64In,
+            imageOut_Base64: base64Out
+        };
+
+        try {
+            const response = await fetch(SHAREPOINT_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok || response.status === 202) {
+                alert("Đã lưu thành công vào SharePoint!");
+                btnSave.innerText = "ĐÃ LƯU THÀNH CÔNG ✓";
+            } else {
+                alert("Gặp lỗi khi lưu lên máy chủ: " + response.statusText);
+                btnSave.innerText = "THỬ LƯU LẠI";
+                btnSave.disabled = false;
+            }
+        } catch (error) {
+            console.error("Lỗi mạng:", error);
+            alert("Không thể kết nối đến máy chủ SharePoint/Power Automate.");
+            btnSave.innerText = "LƯU KẾT QUẢ (ĐẠT)";
+            btnSave.disabled = false;
         }
     }
 </script>
