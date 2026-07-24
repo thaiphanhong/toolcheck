@@ -151,14 +151,14 @@
         <!-- Phần 1: Ảnh lúc VÀO -->
         <div class="image-box">
             <label>1. Ảnh chụp lúc VÀO (Check-in)</label>
-            <input type="file" id="imageIn" accept="image/jpeg, image/png, image/jpg" onchange="previewImage(event, 'canvasIn', 'in')">
+            <input type="file" id="imageIn" accept="image/jpeg, image/png, image/jpg" capture="environment" onchange="previewImage(event, 'canvasIn', 'in')">
             <canvas id="canvasIn"></canvas>
         </div>
 
         <!-- Phần 2: Ảnh lúc RA -->
         <div class="image-box">
             <label>2. Ảnh chụp lúc RA (Check-out)</label>
-            <input type="file" id="imageOut" accept="image/jpeg, image/png, image/jpg" onchange="previewImage(event, 'canvasOut', 'out')">
+            <input type="file" id="imageOut" accept="image/jpeg, image/png, image/jpg" capture="environment" onchange="previewImage(event, 'canvasOut', 'out')">
             <canvas id="canvasOut"></canvas>
         </div>
 
@@ -207,59 +207,45 @@
     // 2. HIỂN THỊ ẢNH GỐC
     function previewImage(event, canvasId, imgKey) {
         const file = event.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
+        if (file) {
             const img = new Image();
             img.onload = function() {
-                // Lưu đối tượng ảnh vào biến toàn cục để chạy AI sau này
                 if (imgKey === 'in') imgInObj = img;
                 if (imgKey === 'out') imgOutObj = img;
-
-                // Vẽ và thu nhỏ ảnh lên Canvas
                 drawImageOnCanvas(canvasId, img);
+                
+                // Ẩn nút lưu nếu chọn ảnh mới để bắt buộc phải quét lại
+                document.getElementById('saveButton').style.display = 'none';
 
-                // Ẩn nút lưu nếu có chọn ảnh mới
-                const saveBtn = document.getElementById('saveButton');
-                if (saveBtn) saveBtn.style.display = 'none';
-            };
-            img.src = e.target.result; // Chuyển thành DataURL giúp Safari vẽ Canvas cực kỳ ổn định
-        };
-        reader.readAsDataURL(file);
+                // Giải phóng bộ nhớ sau khi load xong (Rất quan trọng cho iOS)
+                URL.revokeObjectURL(img.src);
+            }
+            
+            // Bắt lỗi nếu iOS không thể load ảnh
+            img.onerror = function() {
+                alert("Không thể tải ảnh. Vui lòng thử lại!");
+            }
+
+            // Dùng createObjectURL thay vì FileReader
+            img.src = URL.createObjectURL(file);
+        }
     }
 
-    // 2. VẼ ẢNH LÊN CANVAS VÀ THU NHỎ (Chống tràn RAM)
-    function drawImageOnCanvas(canvasId, img) {
+    function drawImageOnCanvas(canvasId, imgObj) {
         const canvas = document.getElementById(canvasId);
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const ctx = canvas.getContext('2d');
+        const maxDim = 600;
+        let width = imgObj.width;
+        let height = imgObj.height;
 
-        // Giới hạn độ phân giải tối đa 640px để nhẹ RAM và đúng chuẩn AI
-        const MAX_WIDTH = 640;
-        const MAX_HEIGHT = 640;
-
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-            if (width > MAX_WIDTH) {
-                height = Math.round(height * (MAX_WIDTH / width));
-                width = MAX_WIDTH;
-            }
-        } else {
-            if (height > MAX_HEIGHT) {
-                width = Math.round(width * (MAX_HEIGHT / height));
-                height = MAX_HEIGHT;
-            }
+        if (width > maxDim || height > maxDim) {
+            if (width > height) { height = (maxDim / width) * height; width = maxDim; } 
+            else { width = (maxDim / height) * width; height = maxDim; }
         }
-
-        // Gán kích thước mới cho Canvas
         canvas.width = width;
         canvas.height = height;
-
-        // Xóa khung cũ và vẽ ảnh mới
-        ctx.clearRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
+        canvas.style.display = 'block';
+        ctx.drawImage(imgObj, 0, 0, width, height);
     }
 
     // 3. TIỀN XỬ LÝ ẢNH
@@ -494,14 +480,6 @@
             btnSave.disabled = false;
         }
     }
-</script>
-
-<!-- Chèn thư viện vConsole -->
-<script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
-<script>
-  // Khởi tạo vConsole
-  var vConsole = new window.VConsole();
-  console.log("vConsole đã khởi động. Hãy kiểm tra các lỗi màu đỏ ở đây!");
 </script>
 
 </body>
