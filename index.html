@@ -2,20 +2,40 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI Vision - Trạm Kiểm Soát Dụng Cụ</title>
+
+    <!-- CẤU HÌNH MÀU CHỦ ĐỀ CHUNG -->
+    <meta name="theme-color" content="#1e3a8a">
+
+    <!-- CẤU HÌNH DÀNH RIÊNG CHO IOS (IPHONE / IPAD) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AI Vision">
+    <!-- Icon cho iOS -->
+    <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+
+    <!-- CẤU HÌNH DÀNH RIÊNG CHO ANDROID (CHROME) -->
+    <!-- Favicon / Icon Android -->
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
+    <!-- File Manifest -->
+    <link rel="manifest" href="./manifest.json">
+
     <!-- Tải thư viện ONNX Runtime Web từ CDN -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    
     <style>
         * { box-sizing: border-box; }
         
         body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
             background-color: #f3f4f6; 
             margin: 0; 
             padding: 20px; 
             color: #1f2937; 
             overflow-x: hidden; 
+            -webkit-tap-highlight-color: transparent; /* Tắt hiệu ứng nhấp nháy xám khi bấm trên iOS */
         }
         
         .container { 
