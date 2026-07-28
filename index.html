@@ -232,35 +232,35 @@
     let detectedCountOut = 0;
     let detailComparisonData = [];
 
-    // Danh sách nhãn Dụng cụ (Gốc từ Model)
+    // Danh sách nhãn Dụng cụ (Cập nhật chuẩn theo thứ tự ID mới của Model)
     const TOOL_LABELS = [
-        "Co_le", 
-        "Bo_co_le_dtt",
-        "Bo_dau_khau",	
-        "Bo_luc_giac",	
-        "Bua_cao_su",
-        "Bua_kim_loai",
-        "Cao_2_chau",
-        "Dong_ho_dien",
-        "Kim_kep",
-        "Kim_tuot_day",
-        "May_bom_mo_milwaukee",	
-        "Mo_let_rang",
-        "Ni_vo",
-        "Sung_ban_keo",	
-        "Thuoc_chu_T",
-        "Thuoc_kep"
+        "Bo_co_le_dtt",        // 0
+        "Bo_dau_khau",         // 1
+        "Bo_luc_giac",         // 2
+        "Bua_cao_su",          // 3
+        "Bua_kim_loai",        // 4
+        "Cao_2_chau",          // 5
+        "Co_le",               // 6
+        "Dong_ho_dien",        // 7
+        "Kim_kep",             // 8
+        "Kim_tuot_day",        // 9
+        "May_bom_mo_milwaukee",// 10
+        "Mo_let_rang",         // 11
+        "Ni_vo",               // 12
+        "Sung_ban_keo",        // 13
+        "Thuoc_chu_T",         // 14
+        "Thuoc_kep"            // 15
     ];
 
     // ÁNH XẠ NHÃN MODEL -> TÊN TIẾNG VIỆT
     const TOOL_NAMES_VI = {
-        "Co_le": "Cờ lê", 
-        "Bo_co_le_dtt": "Bộ cờ lê tự động",
+        "Bo_co_le_dtt": "Bộ cờ lê đầu rời",
         "Bo_dau_khau": "Bộ đầu khẩu",	
         "Bo_luc_giac": "Bộ lục giác",	
         "Bua_cao_su": "Búa cao su",
         "Bua_kim_loai": "Búa kim loại",
         "Cao_2_chau": "Cảo 2 chấu",
+        "Co_le": "Cờ lê",
         "Dong_ho_dien": "Đồng hồ vạn năng",
         "Kim_kep": "Kìm kẹp",
         "Kim_tuot_day": "Kìm tuốt dây",
