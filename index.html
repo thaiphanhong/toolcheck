@@ -117,7 +117,7 @@
             border-radius: 6px; 
             background-color: #e5e7eb; 
             color: #374151; 
-            max-width: 600px;
+            max-width: 650px;
             margin-left: auto;
             margin-right: auto;
             font-size: 16px;
@@ -128,12 +128,54 @@
         
         #resultPanel { display: none; }
 
+        /* CSS BẢNG SO SÁNH DỤNG CỤ */
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 14px;
+            background: white;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #e5e7eb;
+            padding: 10px;
+            text-align: center;
+        }
+        .result-table th {
+            background-color: #1e3a8a;
+            color: white;
+            font-weight: 600;
+        }
+        
+        /* Đủ -> Xanh */
+        .row-ok {
+            background-color: #d1fae5 !important;
+            color: #065f46;
+            font-weight: bold;
+        }
+        /* Thiếu -> Đỏ */
+        .row-missing {
+            background-color: #fee2e2 !important;
+            color: #991b1b;
+            font-weight: bold;
+        }
+        /* Thừa -> Vàng */
+        .row-surplus {
+            background-color: #fef3c7 !important;
+            color: #92400e;
+            font-weight: bold;
+        }
+
         @media (max-width: 768px) {
             body { padding: 10px; }
             .container { padding: 15px; border-radius: 8px; }
             h2 { font-size: 1.3rem; }
             .subtitle { font-size: 12px; margin-bottom: 15px; }
             button { padding: 12px 15px; font-size: 14px; }
+            .result-table th, .result-table td { padding: 6px; font-size: 12px; }
         }
     </style>
 </head>
@@ -141,7 +183,7 @@
 
 <div class="container">
     <h2>Trạm Kiểm Soát Dụng Cụ</h2>
-    <div class="subtitle">YOLOv8 ONNX (Local) - Đối chiếu số lượng VÀO / RA</div>
+    <div class="subtitle">YOLOv8 ONNX (Local) - Đối chiếu chi tiết VÀO / RA</div>
 
     <div id="modelStatus" class="status-bar">Đang tải mô hình ONNX... Vui lòng đợi!</div>
 
@@ -188,8 +230,9 @@
     let imgOutObj = null;
     let detectedCountIn = 0;
     let detectedCountOut = 0;
+    let detailComparisonData = [];
 
-    // Danh sách nhãn Dụng cụ (Cập nhật chuẩn theo model của bạn)
+    // Danh sách nhãn Dụng cụ (Gốc từ Model)
     const TOOL_LABELS = [
         "co_le", 
         "Bo_co_le_dtt",
@@ -209,6 +252,32 @@
         "Thuoc_chu_T",
         "Thuoc_kep"
     ];
+
+    // ÁNH XẠ NHÃN MODEL -> TÊN TIẾNG VIỆT
+    const TOOL_NAMES_VI = {
+        "co_le": "Cờ lê", 
+        "Bo_co_le_dtt": "Bộ cờ lê tự động",
+        "Bo_dau_khau": "Bộ đầu khẩu (Tuýp)",	
+        "Bo_luc_giac": "Bộ chìa lục giác",	
+        "Bua_cao_su": "Búa cao su",
+        "Bua_kim_loai": "Búa kim loại",
+        "Cao_2_chau": "Cảo 2 chấu",
+        "Co_le": "Cờ lê",
+        "Dong_ho_dien": "Đồng hồ vạn năng",
+        "Kim_kep": "Kìm kẹp",
+        "Kim_tuot_day": "Kìm tuốt dây",
+        "May_bom_mo_milwaukee": "Máy bơm mỡ Milwaukee",	
+        "Mo_let_rang": "Mỏ lết răng",
+        "Ni_vo": "Nivo (Thước thủy)",
+        "Sung_ban_keo": "Súng bắn keo",	
+        "Thuoc_chu_T": "Thước chữ T",
+        "Thuoc_kep": "Thước kẹp"
+    };
+
+    function getClassName(classId) {
+        const rawLabel = TOOL_LABELS[classId];
+        return TOOL_NAMES_VI[rawLabel] || rawLabel || `Unknown (${classId})`;
+    }
 
     // 1. KHỞI TẠO MÔ HÌNH ONNX
     async function initModel() {
@@ -240,7 +309,6 @@
                 if (imgKey === 'out') imgOutObj = img;
                 drawImageOnCanvas(canvasId, img);
                 
-                // Ẩn bảng kết quả và nút lưu khi có ảnh mới
                 document.getElementById('resultPanel').style.display = 'none';
                 document.getElementById('saveButton').style.display = 'none';
 
@@ -286,9 +354,9 @@
         return new ort.Tensor('float32', float32Data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
     }
 
-    // 4. CHẠY SUY LUẬN, HẬU XỬ LÝ & TRẢ VỀ SỐ LƯỢNG TOOL
+    // 4. CHẠY SUY LUẬN & THỐNG KÊ CHI TIẾT THEO LOẠI TOOL
     async function detectObjects(imgObj, canvasId) {
-        if (!session) return 0;
+        if (!session) return { total: 0, counts: {} };
 
         const tensor = preprocessImage(imgObj);
         const feeds = {};
@@ -333,8 +401,16 @@
         boxes = applyNMS(boxes, IOU_THRESHOLD);
         drawBoxes(canvasId, imgObj, boxes);
         
-        // Trả về số lượng object phát hiện được
-        return boxes.length;
+        // Đếm số lượng từng classId
+        const toolCounts = {};
+        boxes.forEach(box => {
+            toolCounts[box.classId] = (toolCounts[box.classId] || 0) + 1;
+        });
+
+        return {
+            total: boxes.length,
+            counts: toolCounts
+        };
     }
 
     // 5. THUẬT TOÁN NMS
@@ -368,11 +444,6 @@
         const area2 = (box2.x2 - box2.x1) * (box2.y2 - box2.y1);
         
         return intersection / (area1 + area2 - intersection);
-    }
-
-    // HÀM ÁNH XẠ NHÃN THEO DANH SÁCH TOOL
-    function getClassName(classId) {
-        return TOOL_LABELS[classId] || `Unknown (${classId})`;
     }
 
     // 6. VẼ KHUNG ĐỊNH VỊ
@@ -420,16 +491,68 @@
         btn.disabled = true;
         btn.innerText = "ĐANG PHÂN TÍCH...";
 
-        // Reset lại canvas trước khi quét
         drawImageOnCanvas('canvasIn', imgInObj);
         drawImageOnCanvas('canvasOut', imgOutObj);
 
         try {
-            // Lấy ra số lượng tool ở 2 ảnh
-            detectedCountIn = await detectObjects(imgInObj, 'canvasIn');
-            detectedCountOut = await detectObjects(imgOutObj, 'canvasOut');
+            const resIn = await detectObjects(imgInObj, 'canvasIn');
+            const resOut = await detectObjects(imgOutObj, 'canvasOut');
             
-            // Xử lý Hiển thị So sánh
+            detectedCountIn = resIn.total;
+            detectedCountOut = resOut.total;
+
+            // Tập hợp tất cả loại tool đã xuất hiện ở cả 2 ảnh
+            const allClassIds = new Set([
+                ...Object.keys(resIn.counts),
+                ...Object.keys(resOut.counts)
+            ]);
+
+            let tableRowsHtml = '';
+            let isPerfectMatch = true;
+            detailComparisonData = [];
+
+            allClassIds.forEach(classIdStr => {
+                const classId = parseInt(classIdStr);
+                const countIn = resIn.counts[classId] || 0;
+                const countOut = resOut.counts[classId] || 0;
+                const diff = countOut - countIn;
+                const toolName = getClassName(classId);
+
+                let rowClass = '';
+                let statusText = '';
+
+                if (diff === 0) {
+                    rowClass = 'row-ok'; // ĐỦ -> XANH
+                    statusText = '🟢 Đủ';
+                } else if (diff < 0) {
+                    rowClass = 'row-missing'; // THIẾU -> ĐỎ
+                    statusText = `🔴 Thiếu (${Math.abs(diff)})`;
+                    isPerfectMatch = false;
+                } else {
+                    rowClass = 'row-surplus'; // THỪA -> VÀNG
+                    statusText = `🟡 Thừa (+${diff})`;
+                    isPerfectMatch = false;
+                }
+
+                detailComparisonData.push({
+                    toolName: toolName,
+                    countIn: countIn,
+                    countOut: countOut,
+                    diff: diff,
+                    status: statusText
+                });
+
+                tableRowsHtml += `
+                    <tr class="${rowClass}">
+                        <td style="text-align: left;">${toolName}</td>
+                        <td>${countIn}</td>
+                        <td>${countOut}</td>
+                        <td>${diff > 0 ? '+' + diff : diff}</td>
+                        <td>${statusText}</td>
+                    </tr>
+                `;
+            });
+
             const resultPanel = document.getElementById('resultPanel');
             const saveBtn = document.getElementById('saveButton');
             
@@ -437,19 +560,39 @@
             saveBtn.style.display = 'block';
             saveBtn.disabled = false;
 
-            if (detectedCountIn === detectedCountOut) {
-                resultPanel.innerHTML = `✅ <strong>KHỚP SỐ LƯỢNG!</strong><br>Check-in: <b>${detectedCountIn}</b> tool ➖ Check-out: <b>${detectedCountOut}</b> tool`;
+            let summaryHeader = '';
+            if (isPerfectMatch && detectedCountIn === detectedCountOut) {
+                summaryHeader = `✅ <strong>KHỚP HOÀN TOÀN DỤNG CỤ!</strong><br>Check-in: <b>${detectedCountIn}</b> tool ➖ Check-out: <b>${detectedCountOut}</b> tool`;
                 resultPanel.className = 'status-bar status-ready';
-                
                 saveBtn.innerText = "LƯU KẾT QUẢ (ĐẠT)";
                 saveBtn.classList.remove('btn-save-error');
             } else {
-                resultPanel.innerHTML = `❌ <strong>CẢNH BÁO: LỆCH SỐ LƯỢNG!</strong><br>Check-in: <b>${detectedCountIn}</b> tool ➖ Check-out: <b>${detectedCountOut}</b> tool`;
+                summaryHeader = `❌ <strong>CẢNH BÁO: CÓ CHỆNH LỆCH DỤNG CỤ!</strong><br>Check-in: <b>${detectedCountIn}</b> tool ➖ Check-out: <b>${detectedCountOut}</b> tool`;
                 resultPanel.className = 'status-bar status-error';
-                
-                saveBtn.innerText = "LƯU KẾT QUẢ (LỆCH)";
+                saveBtn.innerText = "LƯU KẾT QUẢ (CÓ LỆCH)";
                 saveBtn.classList.add('btn-save-error');
             }
+
+            // Render Bảng chi tiết
+            const tableHtml = `
+                ${summaryHeader}
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th>Tên Dụng Cụ</th>
+                            <th>VÀO</th>
+                            <th>RA</th>
+                            <th>Chênh Lệch</th>
+                            <th>Trạng Thái</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRowsHtml}
+                    </tbody>
+                </table>
+            `;
+
+            resultPanel.innerHTML = tableHtml;
 
         } catch (err) {
             console.error("Lỗi khi quét ảnh:", err);
@@ -460,9 +603,7 @@
         }
     }
 
-    // ==========================================
     // 7. GỬI DỮ LIỆU LÊN SHAREPOINT
-    // ==========================================
     async function saveToSharePoint() {
         if (SHAREPOINT_WEBHOOK_URL.includes("THAY_LINK")) {
             alert("Bạn cần cập nhật SHAREPOINT_WEBHOOK_URL!");
@@ -480,12 +621,13 @@
         const base64In = canvasIn.toDataURL('image/jpeg', 0.8).split(',')[1];
         const base64Out = canvasOut.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        const isMatch = (detectedCountIn === detectedCountOut);
+        const isMatch = (detectedCountIn === detectedCountOut && detailComparisonData.every(d => d.diff === 0));
 
         const payload = {
             status: isMatch ? "Đạt" : "Lệch",
             toolCountIn: detectedCountIn,
             toolCountOut: detectedCountOut,
+            details: detailComparisonData,
             timestamp: new Date().toISOString(),
             imageIn_Base64: base64In,
             imageOut_Base64: base64Out
