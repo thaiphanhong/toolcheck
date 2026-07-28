@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Vision - Chạy YOLOv8 ONNX Local (Dọc)</title>
+    <title>AI Vision - Trạm Kiểm Soát Dụng Cụ</title>
     <!-- Tải thư viện ONNX Runtime Web từ CDN -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
-        /* Thiết lập box-sizing chung giúp kiểm soát padding và border không làm tràn khung */
-        * { 
-            box-sizing: border-box; 
-        }
+        * { box-sizing: border-box; }
         
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
@@ -18,7 +15,7 @@
             margin: 0; 
             padding: 20px; 
             color: #1f2937; 
-            overflow-x: hidden; /* Ngăn chặn cuộn ngang body */
+            overflow-x: hidden; 
         }
         
         .container { 
@@ -43,7 +40,6 @@
             font-size: 14px; 
         }
         
-        /* Bố cục dọc cho các ô ảnh */
         .image-container { 
             display: flex; 
             flex-direction: column; 
@@ -55,13 +51,11 @@
         .image-box { 
             width: 100%; 
             max-width: 600px; 
-            min-width: 0; 
             text-align: center; 
             border: 2px dashed #d1d5db; 
             padding: 15px; 
             border-radius: 8px; 
             background: #fafafa; 
-            position: relative; 
         }
         
         .image-box label { 
@@ -105,36 +99,40 @@
         button:hover { background-color: #1d4ed8; }
         button:disabled { background-color: #93c5fd; cursor: not-allowed; }
         
-        /* CSS cho nút Lưu */
         .btn-save {
             background-color: #10b981; 
             margin-top: 15px;
-            display: none; /* Ẩn đi khi chưa có kết quả */
+            display: none; 
         }
         .btn-save:hover { background-color: #059669; }
+        .btn-save-error { background-color: #ef4444; }
+        .btn-save-error:hover { background-color: #dc2626; }
 
         .status-bar { 
             text-align: center; 
             margin-top: 15px; 
+            margin-bottom: 20px;
             font-weight: 500; 
-            padding: 10px; 
+            padding: 15px; 
             border-radius: 6px; 
             background-color: #e5e7eb; 
             color: #374151; 
             max-width: 600px;
             margin-left: auto;
             margin-right: auto;
+            font-size: 16px;
         }
         
-        .status-ready { background-color: #dcfce7; color: #166534; }
-        .status-error { background-color: #fee2e2; color: #991b1b; }
+        .status-ready { background-color: #dcfce7; color: #166534; border: 1px solid #bbf7d0;}
+        .status-error { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca;}
+        
+        #resultPanel { display: none; }
 
         @media (max-width: 768px) {
             body { padding: 10px; }
             .container { padding: 15px; border-radius: 8px; }
             h2 { font-size: 1.3rem; }
             .subtitle { font-size: 12px; margin-bottom: 15px; }
-            .image-container { gap: 15px; }
             button { padding: 12px 15px; font-size: 14px; }
         }
     </style>
@@ -142,30 +140,34 @@
 <body>
 
 <div class="container">
-    <h2>Trạm Kiểm Soát Dụng Cụ - AI Cục Bộ</h2>
-    <div class="subtitle">Phát hiện đối tượng bằng mô hình YOLOv8 (.onnx) chạy trực tiếp trên trình duyệt</div>
+    <h2>Trạm Kiểm Soát Dụng Cụ</h2>
+    <div class="subtitle">YOLOv8 ONNX (Local) - Đối chiếu số lượng VÀO / RA</div>
 
     <div id="modelStatus" class="status-bar">Đang tải mô hình ONNX... Vui lòng đợi!</div>
 
     <div class="image-container">
-        <!-- Phần 1: Ảnh lúc VÀO -->
+        <!-- Ảnh VÀO -->
         <div class="image-box">
             <label>1. Ảnh chụp lúc VÀO (Check-in)</label>
             <input type="file" id="imageIn" accept="image/jpeg, image/png, image/jpg" capture="environment" onchange="previewImage(event, 'canvasIn', 'in')">
             <canvas id="canvasIn"></canvas>
         </div>
 
-        <!-- Phần 2: Ảnh lúc RA -->
+        <!-- Ảnh RA -->
         <div class="image-box">
             <label>2. Ảnh chụp lúc RA (Check-out)</label>
             <input type="file" id="imageOut" accept="image/jpeg, image/png, image/jpg" capture="environment" onchange="previewImage(event, 'canvasOut', 'out')">
             <canvas id="canvasOut"></canvas>
         </div>
 
-    <button id="checkButton" onclick="analyzeImages()" disabled>KÍCH HOẠT QUÉT ĐỐI TƯỢNG</button>
-    
-    <!-- Nút Lưu Kết Quả Mới Thêm -->
-    <button id="saveButton" class="btn-save" onclick="saveToSharePoint()">LƯU KẾT QUẢ (ĐẠT)</button>
+        <button id="checkButton" onclick="analyzeImages()" disabled>KÍCH HOẠT QUÉT ĐỐI TƯỢNG</button>
+        
+        <!-- Bảng thông báo kết quả so sánh -->
+        <div id="resultPanel" class="status-bar"></div>
+
+        <!-- Nút Lưu Kết Quả -->
+        <button id="saveButton" class="btn-save" onclick="saveToSharePoint()">LƯU KẾT QUẢ</button>
+    </div>
 </div>
 
 <script>
@@ -177,12 +179,36 @@
     const IOU_THRESHOLD = 0.45;        
     const MODEL_INPUT_SIZE = 640;      
 
-    // Dán URL Webhook từ Power Automate của bạn vào đây
+    // Dán URL Webhook từ Power Automate vào đây
     const SHAREPOINT_WEBHOOK_URL = "https://prod-xx.westeurope.logic.azure.com:443/workflows/xxxx..."; 
 
+    // Biến toàn cục
     let session = null;
     let imgInObj = null;
     let imgOutObj = null;
+    let detectedCountIn = 0;
+    let detectedCountOut = 0;
+
+    // Danh sách nhãn Dụng cụ (Cập nhật chuẩn theo model của bạn)
+    const TOOL_LABELS = [
+        "co_le", 
+        "Bo_co_le_dtt",
+        "Bo_dau_khau",	
+        "Bo_luc_giac",	
+        "Bua_cao_su",
+        "Bua_kim_loai",
+        "Cao_2_chau",
+        "Co_le",
+        "Dong_ho_dien",
+        "Kim_kep",
+        "Kim_tuot_day",
+        "May_bom_mo_milwaukee",	
+        "Mo_let_rang",
+        "Ni_vo",
+        "Sung_ban_keo",	
+        "Thuoc_chu_T",
+        "Thuoc_kep"
+    ];
 
     // 1. KHỞI TẠO MÔ HÌNH ONNX
     async function initModel() {
@@ -197,7 +223,7 @@
         } catch (error) {
             console.error(error);
             const statusDiv = document.getElementById('modelStatus');
-            statusDiv.textContent = "❌ Lỗi tải mô hình! Hãy kiểm tra lại";
+            statusDiv.textContent = "❌ Lỗi tải mô hình! Hãy kiểm tra lại file best.onnx";
             statusDiv.classList.add('status-error');
         }
     }
@@ -214,19 +240,13 @@
                 if (imgKey === 'out') imgOutObj = img;
                 drawImageOnCanvas(canvasId, img);
                 
-                // Ẩn nút lưu nếu chọn ảnh mới để bắt buộc phải quét lại
+                // Ẩn bảng kết quả và nút lưu khi có ảnh mới
+                document.getElementById('resultPanel').style.display = 'none';
                 document.getElementById('saveButton').style.display = 'none';
 
-                // Giải phóng bộ nhớ sau khi load xong (Rất quan trọng cho iOS)
                 URL.revokeObjectURL(img.src);
             }
-            
-            // Bắt lỗi nếu iOS không thể load ảnh
-            img.onerror = function() {
-                alert("Không thể tải ảnh. Vui lòng thử lại!");
-            }
-
-            // Dùng createObjectURL thay vì FileReader
+            img.onerror = function() { alert("Không thể tải ảnh. Vui lòng thử lại!"); }
             img.src = URL.createObjectURL(file);
         }
     }
@@ -266,9 +286,9 @@
         return new ort.Tensor('float32', float32Data, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]);
     }
 
-    // 4. CHẠY SUY LUẬN VÀ HẬU XỬ LÝ
+    // 4. CHẠY SUY LUẬN, HẬU XỬ LÝ & TRẢ VỀ SỐ LƯỢNG TOOL
     async function detectObjects(imgObj, canvasId) {
-        if (!session) return;
+        if (!session) return 0;
 
         const tensor = preprocessImage(imgObj);
         const feeds = {};
@@ -312,6 +332,9 @@
 
         boxes = applyNMS(boxes, IOU_THRESHOLD);
         drawBoxes(canvasId, imgObj, boxes);
+        
+        // Trả về số lượng object phát hiện được
+        return boxes.length;
     }
 
     // 5. THUẬT TOÁN NMS
@@ -347,18 +370,9 @@
         return intersection / (area1 + area2 - intersection);
     }
 
-    // HÀM ÁNH XẠ NHÃN
+    // HÀM ÁNH XẠ NHÃN THEO DANH SÁCH TOOL
     function getClassName(classId) {
-        if (classId >= 0 && classId <= 30) {
-            const num = String(classId + 1).padStart(2, '0');
-            return `AL4_${num}`;
-        } else if (classId >= 31 && classId <= 54) {
-            const num = String(classId - 30).padStart(2, '0');
-            return `AL4_mold_${num}`;
-        } else if (classId === 55) {
-            return 'AL4';
-        }
-        return `Unknown (${classId})`;
+        return TOOL_LABELS[classId] || `Unknown (${classId})`;
     }
 
     // 6. VẼ KHUNG ĐỊNH VỊ
@@ -379,8 +393,7 @@
             ctx.lineWidth = 3;
             ctx.strokeRect(x, y, w, h);
 
-            const className = getClassName(box.classId);
-            const labelText = className;
+            const labelText = getClassName(box.classId);
             
             ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
             ctx.textBaseline = 'top';
@@ -396,7 +409,7 @@
         });
     }
 
-    // LUỒNG CHẠY QUÉT
+    // LUỒNG CHẠY QUÉT VÀ SO SÁNH SỐ LƯỢNG
     async function analyzeImages() {
         if (!imgInObj || !imgOutObj) {
             alert("Vui lòng tải lên đủ cả hai hình ảnh VÀO và RA!");
@@ -407,18 +420,36 @@
         btn.disabled = true;
         btn.innerText = "ĐANG PHÂN TÍCH...";
 
+        // Reset lại canvas trước khi quét
         drawImageOnCanvas('canvasIn', imgInObj);
         drawImageOnCanvas('canvasOut', imgOutObj);
 
         try {
-            await detectObjects(imgInObj, 'canvasIn');
-            await detectObjects(imgOutObj, 'canvasOut');
+            // Lấy ra số lượng tool ở 2 ảnh
+            detectedCountIn = await detectObjects(imgInObj, 'canvasIn');
+            detectedCountOut = await detectObjects(imgOutObj, 'canvasOut');
             
-            // Xử lý thành công -> Hiển thị nút Lưu
+            // Xử lý Hiển thị So sánh
+            const resultPanel = document.getElementById('resultPanel');
             const saveBtn = document.getElementById('saveButton');
+            
+            resultPanel.style.display = 'block';
             saveBtn.style.display = 'block';
-            saveBtn.innerText = "LƯU KẾT QUẢ (ĐẠT)";
             saveBtn.disabled = false;
+
+            if (detectedCountIn === detectedCountOut) {
+                resultPanel.innerHTML = `✅ <strong>KHỚP SỐ LƯỢNG!</strong><br>Check-in: <b>${detectedCountIn}</b> tool ➖ Check-out: <b>${detectedCountOut}</b> tool`;
+                resultPanel.className = 'status-bar status-ready';
+                
+                saveBtn.innerText = "LƯU KẾT QUẢ (ĐẠT)";
+                saveBtn.classList.remove('btn-save-error');
+            } else {
+                resultPanel.innerHTML = `❌ <strong>CẢNH BÁO: LỆCH SỐ LƯỢNG!</strong><br>Check-in: <b>${detectedCountIn}</b> tool ➖ Check-out: <b>${detectedCountOut}</b> tool`;
+                resultPanel.className = 'status-bar status-error';
+                
+                saveBtn.innerText = "LƯU KẾT QUẢ (LỆCH)";
+                saveBtn.classList.add('btn-save-error');
+            }
 
         } catch (err) {
             console.error("Lỗi khi quét ảnh:", err);
@@ -430,29 +461,31 @@
     }
 
     // ==========================================
-    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT (QUA WEBHOOK)
+    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT
     // ==========================================
     async function saveToSharePoint() {
         if (SHAREPOINT_WEBHOOK_URL.includes("THAY_LINK")) {
-            alert("Bạn cần phải cập nhật SHAREPOINT_WEBHOOK_URL trong mã nguồn trước!");
+            alert("Bạn cần cập nhật SHAREPOINT_WEBHOOK_URL!");
             return;
         }
 
         const btnSave = document.getElementById('saveButton');
+        const originalText = btnSave.innerText;
         btnSave.innerText = "ĐANG GỬI DỮ LIỆU...";
         btnSave.disabled = true;
 
-        // Trích xuất ảnh từ Canvas dưới dạng Base64 (ảnh đã có khung đỏ)
         const canvasIn = document.getElementById('canvasIn');
         const canvasOut = document.getElementById('canvasOut');
         
-        // Cắt bỏ phần tiền tố "data:image/jpeg;base64," để SharePoint dễ xử lý
         const base64In = canvasIn.toDataURL('image/jpeg', 0.8).split(',')[1];
         const base64Out = canvasOut.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-        // Đóng gói JSON
+        const isMatch = (detectedCountIn === detectedCountOut);
+
         const payload = {
-            status: "Đạt",
+            status: isMatch ? "Đạt" : "Lệch",
+            toolCountIn: detectedCountIn,
+            toolCountOut: detectedCountOut,
             timestamp: new Date().toISOString(),
             imageIn_Base64: base64In,
             imageOut_Base64: base64Out
@@ -470,13 +503,13 @@
                 btnSave.innerText = "ĐÃ LƯU THÀNH CÔNG ✓";
             } else {
                 alert("Gặp lỗi khi lưu lên máy chủ: " + response.statusText);
-                btnSave.innerText = "THỬ LƯU LẠI";
+                btnSave.innerText = originalText;
                 btnSave.disabled = false;
             }
         } catch (error) {
             console.error("Lỗi mạng:", error);
             alert("Không thể kết nối đến máy chủ SharePoint/Power Automate.");
-            btnSave.innerText = "LƯU KẾT QUẢ (ĐẠT)";
+            btnSave.innerText = originalText;
             btnSave.disabled = false;
         }
     }
@@ -484,9 +517,7 @@
 
 <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
 <script>
-  // Khởi tạo vConsole
   var vConsole = new window.VConsole();
-  console.log("vConsole đã khởi động. Hãy kiểm tra các lỗi màu đỏ ở đây!");
 </script>
     
 </body>
