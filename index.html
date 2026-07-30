@@ -308,7 +308,7 @@
         const buffer = await response.arrayBuffer();
         console.log("D", buffer.byteLength);
         // Tạm thời chưa tạo session
-        // session = await ort.InferenceSession.create(buffer);
+        session = await ort.InferenceSession.create(buffer);
         console.log("E");
     }
 
