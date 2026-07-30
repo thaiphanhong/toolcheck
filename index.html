@@ -508,6 +508,16 @@
             return;
         }
 
+        if (!session) {
+            const statusDiv = document.getElementById("modelStatus");
+            statusDiv.textContent = "Đang tải mô hình AI...";
+        
+            await initModel();
+        
+            statusDiv.textContent = "✅ Ứng dụng đã sẵn sàng!";
+            statusDiv.classList.add("status-ready");
+        }
+
         const btn = document.getElementById('checkButton');
         btn.disabled = true;
         btn.innerText = "ĐANG PHÂN TÍCH...";
