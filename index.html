@@ -315,7 +315,13 @@
         }
     }
 
-    window.onload = initModel;
+    window.onload = function () {
+        const statusDiv = document.getElementById('modelStatus');
+        statusDiv.textContent = "✅ Trang đã mở. Chưa tải mô hình.";
+        statusDiv.classList.add('status-ready');
+    
+        document.getElementById('checkButton').disabled = false;
+    };
 
     // 2. HIỂN THỊ ẢNH GỐC
     function previewImage(event, canvasId, imgKey) {
