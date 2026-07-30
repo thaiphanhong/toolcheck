@@ -299,20 +299,17 @@
 
     // 1. KHỞI TẠO MÔ HÌNH ONNX
     async function initModel() {
-        try {
-            ort.env.wasm.numThreads = 1; 
-            session = await ort.InferenceSession.create(MODEL_PATH, { executionProviders: ['wasm'] });
-            
-            const statusDiv = document.getElementById('modelStatus');
-            statusDiv.textContent = "✅ Ứng dụng đã sẵn sàng!";
-            statusDiv.classList.add('status-ready');
-            document.getElementById('checkButton').disabled = false;
-        } catch (error) {
-            console.error(error);
-            const statusDiv = document.getElementById('modelStatus');
-            statusDiv.textContent = "❌ Lỗi tải mô hình! Hãy kiểm tra lại file best.onnx";
-            statusDiv.classList.add('status-error');
-        }
+        console.log("A");
+        ort.env.wasm.numThreads = 1;
+        console.log("B");
+        // Chỉ tải file model, chưa tạo session
+        const response = await fetch(MODEL_PATH);
+        console.log("C", response.status);
+        const buffer = await response.arrayBuffer();
+        console.log("D", buffer.byteLength);
+        // Tạm thời chưa tạo session
+        // session = await ort.InferenceSession.create(buffer);
+        console.log("E");
     }
 
     window.onload = function () {
