@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Vision - Trạm Kiểm Soát Dụng Cụ</title>
+    <title>AI Vision - Ứng Dụng Kiểm Soát CCDC</title>
 
     <!-- CẤU HÌNH MÀU CHỦ ĐỀ CHUNG -->
     <meta name="theme-color" content="#1e3a8a">
@@ -24,6 +24,9 @@
 
     <!-- Tải thư viện ONNX Runtime Web từ CDN -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+
+    <!-- Thư viện Microsoft Authentication Library (MSAL) -->
+    <script src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
     
     <style>
         * { box-sizing: border-box; }
@@ -207,6 +210,12 @@
 
     <div id="modelStatus" class="status-bar">Đang tải mô hình ONNX... Vui lòng đợi!</div>
 
+    <!-- Khu vực đăng nhập Microsoft 365 -->
+    <div id="loginSection" style="text-align: center; margin-bottom: 20px;">
+        <button id="loginButton" onclick="signInM365()" style="background-color: #f59e0b; max-width: 250px;">🔑 ĐĂNG NHẬP MICROSOFT</button>
+        <div id="userGreeting" style="display: none; font-weight: bold; color: #1e3a8a; background: #e0f2fe; padding: 10px; border-radius: 6px;"></div>
+    </div>
+
     <div class="image-container">
         <!-- Ảnh VÀO -->
         <div class="image-box">
@@ -232,17 +241,54 @@
     </div>
 </div>
 
-<script>
+<script>    
+
     // ==========================================
-    // CẤU HÌNH YOLOV8 & WEBHOOK
+    // CẤU HÌNH YOLOV8 & MICROSOFT 365 MSAL
     // ==========================================
     const MODEL_PATH = "./best.onnx"; 
     const CONFIDENCE_THRESHOLD = 0.6; 
     const IOU_THRESHOLD = 0.45;        
     const MODEL_INPUT_SIZE = 640;      
 
-    // Dán URL Webhook từ Power Automate vào đây
-    const SHAREPOINT_WEBHOOK_URL = "https://prod-xx.westeurope.logic.azure.com:443/workflows/xxxx..."; 
+    // Cấu hình MSAL (Authentication)
+    const msalConfig = {
+        auth: {
+            clientId: "[điền client id]",
+            authority: "https://login.microsoftonline.com/[điền tenant id]",
+            redirectUri: window.location.href // Quay lại trang hiện tại sau khi đăng nhập
+        },
+        cache: {
+            cacheLocation: "sessionStorage", 
+            storeAuthStateInCookie: false 
+        }
+    };
+    const msalInstance = new msal.PublicClientApplication(msalConfig);
+    const GRAPH_SCOPES = ["User.Read", "Sites.ReadWrite.All"]; 
+    
+    // Cấu hình SharePoint Graph API
+    const SP_SITE_ID = "thgroupglb.sharepoint.com:/sites/THMILKFACTORY[cite: 2]"; 
+    const SP_LIST_NAME = "QuanLyCCDC";
+
+    // Biến toàn cục mới
+    let currentUser = null;
+    let avgConfidenceOut = 0; // Lưu độ tự tin trung bình của ảnh chụp RA
+
+    // Hàm Đăng nhập M365
+    async function signInM365() {
+        try {
+            const loginResponse = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
+            currentUser = loginResponse.account;
+            
+            document.getElementById('loginButton').style.display = 'none';
+            const greeting = document.getElementById('userGreeting');
+            greeting.innerText = `👤 Kỹ thuật viên: ${currentUser.name}`;
+            greeting.style.display = 'block';
+        } catch (error) {
+            console.error("Lỗi đăng nhập:", error);
+            alert("Đăng nhập thất bại. Vui lòng kiểm tra lại popup hoặc kết nối mạng.");
+        }
+    }
 
     // Biến toàn cục
     let session = null;
@@ -634,54 +680,86 @@
         }
     }
 
-    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT
+    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT QUA MICROSOFT GRAPH API
     async function saveToSharePoint() {
-        if (SHAREPOINT_WEBHOOK_URL.includes("THAY_LINK")) {
-            alert("Bạn cần cập nhật SHAREPOINT_WEBHOOK_URL!");
+        if (!currentUser) {
+            alert("Vui lòng Bấm ĐĂNG NHẬP MICROSOFT trước khi lưu kết quả!");
             return;
         }
 
         const btnSave = document.getElementById('saveButton');
         const originalText = btnSave.innerText;
-        btnSave.innerText = "ĐANG GỬI DỮ LIỆU...";
+        btnSave.innerText = "ĐANG GỬI DỮ LIỆU LÊN SHAREPOINT...";
         btnSave.disabled = true;
 
-        const canvasIn = document.getElementById('canvasIn');
-        const canvasOut = document.getElementById('canvasOut');
-        
-        const base64In = canvasIn.toDataURL('image/jpeg', 0.8).split(',')[1];
-        const base64Out = canvasOut.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-        const isMatch = (detectedCountIn === detectedCountOut && detailComparisonData.every(d => d.diff === 0));
-
-        const payload = {
-            status: isMatch ? "Đạt" : "Lệch",
-            toolCountIn: detectedCountIn,
-            toolCountOut: detectedCountOut,
-            details: detailComparisonData,
-            timestamp: new Date().toISOString(),
-            imageIn_Base64: base64In,
-            imageOut_Base64: base64Out
-        };
-
         try {
-            const response = await fetch(SHAREPOINT_WEBHOOK_URL, {
+            // 1. Lấy Access Token (Lấy trong background hoặc mở popup nếu hết hạn)
+            let accessToken;
+            try {
+                const tokenResponse = await msalInstance.acquireTokenSilent({
+                    scopes: GRAPH_SCOPES,
+                    account: currentUser
+                });
+                accessToken = tokenResponse.accessToken;
+            } catch (silentError) {
+                const tokenResponse = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
+                accessToken = tokenResponse.accessToken;
+            }
+
+            // 2. Chuẩn bị Dữ liệu
+            // Lấy Base64 của cả ảnh VÀO và ảnh RA
+            const canvasIn = document.getElementById('canvasIn');
+            const base64In = canvasIn.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+            const canvasOut = document.getElementById('canvasOut');
+            const base64Out = canvasOut.toDataURL('image/jpeg', 0.8).split(',')[1];
+            
+            const isMatch = (detectedCountIn === detectedCountOut && detailComparisonData.every(d => d.diff === 0));
+            
+            // Xử lý chuỗi danh sách tool để gộp chung vào cột GhiChu
+            const detectedList = detailComparisonData.map(d => `${d.toolName}: ${d.countOut}`).join(', ');
+            const missingTools = detailComparisonData.filter(d => d.diff < 0).map(d => `${d.toolName} (${Math.abs(d.diff)})`).join(', ');
+            const surplusTools = detailComparisonData.filter(d => d.diff > 0).map(d => `${d.toolName} (${d.diff})`).join(', ');
+
+            // 3. Payload gửi lên Graph API
+            const graphEndpoint = `https://graph.microsoft.com/v1.0/sites/${SP_SITE_ID}/lists/${SP_LIST_NAME}/items`;
+            
+            const payload = {
+                fields: {
+                    Title: `KT-${new Date().getTime()}`, // Cột "Tiêu đề" luôn dùng Internal Name là Title
+                    KhuVuc: "Trạm Kiểm Tra", // Cố định hoặc lấy từ input (ví dụ: document.getElementById('khuVuc').value)
+                    NhanVien: currentUser.name, 
+                    NgayGio: new Date().toISOString(),
+                    SoLuongVao: detectedCountIn,
+                    SoLuongRa: detectedCountOut,
+                    AnhChupVao: `data:image/jpeg;base64,${base64In}`,
+                    AnhChupRa: `data:image/jpeg;base64,${base64Out}`,
+                    KetQua: isMatch ? "OK" : "NG",
+                    GhiChu: `Chi tiết: ${detectedList || "Trống"} | Thiếu: ${missingTools || "Không"} | Thừa: ${surplusTools || "Không"}`
+                }
+            };
+
+            // 4. Gọi Graph API
+            const response = await fetch(graphEndpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(payload)
             });
 
-            if (response.ok || response.status === 202) {
-                alert("Đã lưu thành công vào SharePoint!");
-                btnSave.innerText = "ĐÃ LƯU THÀNH CÔNG ✓";
-            } else {
-                alert("Gặp lỗi khi lưu lên máy chủ: " + response.statusText);
-                btnSave.innerText = originalText;
-                btnSave.disabled = false;
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || response.statusText);
             }
+
+            alert("Đã ghi dữ liệu lên SharePoint thành công!");
+            btnSave.innerText = "ĐÃ LƯU THÀNH CÔNG ✓";
+
         } catch (error) {
-            console.error("Lỗi mạng:", error);
-            alert("Không thể kết nối đến máy chủ SharePoint/Power Automate.");
+            console.error("Lỗi khi lưu SharePoint bằng Graph API:", error);
+            alert("Không thể lưu: " + error.message);
             btnSave.innerText = originalText;
             btnSave.disabled = false;
         }
