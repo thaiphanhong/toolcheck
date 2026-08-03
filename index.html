@@ -12,21 +12,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AI Vision">
-    <!-- Icon cho iOS -->
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
 
     <!-- CẤU HÌNH DÀNH RIÊNG CHO ANDROID (CHROME) -->
-    <!-- Favicon / Icon Android -->
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
-    <!-- File Manifest -->
     <link rel="manifest" href="./manifest.json">
 
     <!-- Tải thư viện ONNX Runtime Web từ CDN -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
-
-    <!-- Thư viện Microsoft Authentication Library (MSAL) -->
-    <script src="https://alcdn.msauth.net/browser/2.37.0/js/msal-browser.min.js"></script>
     
     <style>
         * { box-sizing: border-box; }
@@ -38,7 +32,7 @@
             padding: 20px; 
             color: #1f2937; 
             overflow-x: hidden; 
-            -webkit-tap-highlight-color: transparent; /* Tắt hiệu ứng nhấp nháy xám khi bấm trên iOS */
+            -webkit-tap-highlight-color: transparent;
         }
         
         .container { 
@@ -63,6 +57,25 @@
             font-size: 14px; 
         }
         
+        .employee-input-container {
+            max-width: 600px;
+            margin: 0 auto 20px auto;
+        }
+
+        .employee-input-container input {
+            width: 100%;
+            padding: 12px 15px;
+            font-size: 16px;
+            border: 2px solid #d1d5db;
+            border-radius: 6px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .employee-input-container input:focus {
+            border-color: #2563eb;
+        }
+
         .image-container { 
             display: flex; 
             flex-direction: column; 
@@ -173,24 +186,9 @@
             font-weight: 600;
         }
         
-        /* Đủ -> Xanh */
-        .row-ok {
-            background-color: #d1fae5 !important;
-            color: #065f46;
-            font-weight: bold;
-        }
-        /* Thiếu -> Đỏ */
-        .row-missing {
-            background-color: #fee2e2 !important;
-            color: #991b1b;
-            font-weight: bold;
-        }
-        /* Thừa -> Vàng */
-        .row-surplus {
-            background-color: #fef3c7 !important;
-            color: #92400e;
-            font-weight: bold;
-        }
+        .row-ok { background-color: #d1fae5 !important; color: #065f46; font-weight: bold; }
+        .row-missing { background-color: #fee2e2 !important; color: #991b1b; font-weight: bold; }
+        .row-surplus { background-color: #fef3c7 !important; color: #92400e; font-weight: bold; }
 
         @media (max-width: 768px) {
             body { padding: 10px; }
@@ -210,10 +208,9 @@
 
     <div id="modelStatus" class="status-bar">Đang tải mô hình ONNX... Vui lòng đợi!</div>
 
-    <!-- Khu vực đăng nhập Microsoft 365 -->
-    <div id="loginSection" style="text-align: center; margin-bottom: 20px;">
-        <button id="loginButton" onclick="signInM365()" style="background-color: #f59e0b; max-width: 250px;">🔑 ĐĂNG NHẬP MICROSOFT</button>
-        <div id="userGreeting" style="display: none; font-weight: bold; color: #1e3a8a; background: #e0f2fe; padding: 10px; border-radius: 6px;"></div>
+    <!-- Nhập tên nhân viên (Thay thế cho đăng nhập MSAL) -->
+    <div class="employee-input-container">
+        <input type="text" id="employeeName" placeholder="👤 Nhập tên Kỹ thuật viên (Bắt buộc để lưu)..." />
     </div>
 
     <div class="image-container">
@@ -244,51 +241,24 @@
 <script>    
 
     // ==========================================
-    // CẤU HÌNH YOLOV8 & MICROSOFT 365 MSAL
+    // CẤU HÌNH YOLOV8 & THÔNG SỐ APP
     // ==========================================
     const MODEL_PATH = "./best.onnx"; 
     const CONFIDENCE_THRESHOLD = 0.6; 
     const IOU_THRESHOLD = 0.45;        
     const MODEL_INPUT_SIZE = 640;      
 
-    // Cấu hình MSAL (Authentication)
-    const msalConfig = {
-        auth: {
-            clientId: "e4740fa4-f772-4b75-852a-b20b01968f7e",
-            authority: "https://login.microsoftonline.com/8183d761-d819-4dc1-ad95-a2e8a5228dcd",
-            redirectUri: window.location.href // Quay lại trang hiện tại sau khi đăng nhập
-        },
-        cache: {
-            cacheLocation: "sessionStorage", 
-            storeAuthStateInCookie: false 
-        }
-    };
-    const msalInstance = new msal.PublicClientApplication(msalConfig);
-    const GRAPH_SCOPES = ["User.Read", "Sites.ReadWrite.All"]; 
+    // ==========================================
+    // CẤU HÌNH MICROSOFT GRAPH API (ỨNG DỤNG DIRECT)
+    // ==========================================
+    // BẠN CẦN ĐIỀN CHÍNH XÁC CÁC THÔNG TIN NÀY
+    const TENANT_ID = "8183d761-d819-4dc1-ad95-a2e8a5228dcd"; 
+    const CLIENT_ID = "e4740fa4-f772-4b75-852a-b20b01968f7e"; 
+    const CLIENT_SECRET = ".y.8Q~_UKmyd7vmfxtIWCQPHyk-J64VMThxb.b42"; 
     
-    // Cấu hình SharePoint Graph API
-    const SP_SITE_ID = "thgroupglb.sharepoint.com:/sites/THMILKFACTORY[cite: 2]"; 
+    // Cấu hình SharePoint 
+    const SP_SITE_ID = "thgroupglb.sharepoint.com:/sites/THMILKFACTORY"; 
     const SP_LIST_NAME = "QuanLyCCDC";
-
-    // Biến toàn cục mới
-    let currentUser = null;
-    let avgConfidenceOut = 0; // Lưu độ tự tin trung bình của ảnh chụp RA
-
-    // Hàm Đăng nhập M365
-    async function signInM365() {
-        try {
-            const loginResponse = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
-            currentUser = loginResponse.account;
-            
-            document.getElementById('loginButton').style.display = 'none';
-            const greeting = document.getElementById('userGreeting');
-            greeting.innerText = `👤 Kỹ thuật viên: ${currentUser.name}`;
-            greeting.style.display = 'block';
-        } catch (error) {
-            console.error("Lỗi đăng nhập:", error);
-            alert("Đăng nhập thất bại. Vui lòng kiểm tra lại popup hoặc kết nối mạng.");
-        }
-    }
 
     // Biến toàn cục
     let session = null;
@@ -298,24 +268,12 @@
     let detectedCountOut = 0;
     let detailComparisonData = [];
 
-    // Danh sách nhãn Dụng cụ (Cập nhật chuẩn theo thứ tự ID mới của Model)
+    // Danh sách nhãn Dụng cụ 
     const TOOL_LABELS = [
-        "Bo_co_le_dtt",        // 0
-        "Bo_dau_khau",         // 1
-        "Bo_luc_giac",         // 2
-        "Bua_cao_su",          // 3
-        "Bua_kim_loai",        // 4
-        "Cao_2_chau",          // 5
-        "Co_le",               // 6
-        "Dong_ho_dien",        // 7
-        "Kim_kep",             // 8
-        "Kim_tuot_day",        // 9
-        "May_bom_mo_milwaukee",// 10
-        "Mo_let_rang",         // 11
-        "Ni_vo",               // 12
-        "Sung_ban_keo",        // 13
-        "Thuoc_chu_T",         // 14
-        "Thuoc_kep"            // 15
+        "Bo_co_le_dtt", "Bo_dau_khau", "Bo_luc_giac", "Bua_cao_su", 
+        "Bua_kim_loai", "Cao_2_chau", "Co_le", "Dong_ho_dien", 
+        "Kim_kep", "Kim_tuot_day", "May_bom_mo_milwaukee", "Mo_let_rang", 
+        "Ni_vo", "Sung_ban_keo", "Thuoc_chu_T", "Thuoc_kep"
     ];
 
     // ÁNH XẠ NHÃN MODEL -> TÊN TIẾNG VIỆT
@@ -345,24 +303,16 @@
 
     // 1. KHỞI TẠO MÔ HÌNH ONNX
     async function initModel() {
-        console.log("A");
         ort.env.wasm.numThreads = 1;
-        console.log("B");
-        // Chỉ tải file model, chưa tạo session
         const response = await fetch(MODEL_PATH);
-        console.log("C", response.status);
         const buffer = await response.arrayBuffer();
-        console.log("D", buffer.byteLength);
-        // Tạm thời chưa tạo session
         session = await ort.InferenceSession.create(buffer);
-        console.log("E");
     }
 
     window.onload = function () {
         const statusDiv = document.getElementById('modelStatus');
         statusDiv.textContent = "✅ Trang đã mở. Chưa tải mô hình.";
         statusDiv.classList.add('status-ready');
-    
         document.getElementById('checkButton').disabled = false;
     };
 
@@ -468,7 +418,6 @@
         boxes = applyNMS(boxes, IOU_THRESHOLD);
         drawBoxes(canvasId, imgObj, boxes);
         
-        // Đếm số lượng từng classId
         const toolCounts = {};
         boxes.forEach(box => {
             toolCounts[box.classId] = (toolCounts[box.classId] || 0) + 1;
@@ -549,6 +498,13 @@
 
     // LUỒNG CHẠY QUÉT VÀ SO SÁNH SỐ LƯỢNG
     async function analyzeImages() {
+        const employeeName = document.getElementById('employeeName').value.trim();
+        if(!employeeName) {
+            alert("Vui lòng nhập Tên Kỹ thuật viên trước khi quét!");
+            document.getElementById('employeeName').focus();
+            return;
+        }
+
         if (!imgInObj || !imgOutObj) {
             alert("Vui lòng tải lên đủ cả hai hình ảnh VÀO và RA!");
             return;
@@ -578,7 +534,6 @@
             detectedCountIn = resIn.total;
             detectedCountOut = resOut.total;
 
-            // Tập hợp tất cả loại tool đã xuất hiện ở cả 2 ảnh
             const allClassIds = new Set([
                 ...Object.keys(resIn.counts),
                 ...Object.keys(resOut.counts)
@@ -599,25 +554,19 @@
                 let statusText = '';
 
                 if (diff === 0) {
-                    rowClass = 'row-ok'; // ĐỦ -> XANH
+                    rowClass = 'row-ok'; 
                     statusText = '🟢 Đủ';
                 } else if (diff < 0) {
-                    rowClass = 'row-missing'; // THIẾU -> ĐỎ
+                    rowClass = 'row-missing'; 
                     statusText = `🔴 Thiếu (${Math.abs(diff)})`;
                     isPerfectMatch = false;
                 } else {
-                    rowClass = 'row-surplus'; // THỪA -> VÀNG
+                    rowClass = 'row-surplus'; 
                     statusText = `🟡 Thừa (+${diff})`;
                     isPerfectMatch = false;
                 }
 
-                detailComparisonData.push({
-                    toolName: toolName,
-                    countIn: countIn,
-                    countOut: countOut,
-                    diff: diff,
-                    status: statusText
-                });
+                detailComparisonData.push({ toolName, countIn, countOut, diff, status: statusText });
 
                 tableRowsHtml += `
                     <tr class="${rowClass}">
@@ -650,7 +599,6 @@
                 saveBtn.classList.add('btn-save-error');
             }
 
-            // Render Bảng chi tiết
             const tableHtml = `
                 ${summaryHeader}
                 <table class="result-table">
@@ -680,10 +628,16 @@
         }
     }
 
-    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT QUA MICROSOFT GRAPH API
+    // 7. GỬI DỮ LIỆU LÊN SHAREPOINT QUA MICROSOFT GRAPH API BẰNG CLIENT CREDENTIALS
     async function saveToSharePoint() {
-        if (!currentUser) {
-            alert("Vui lòng Bấm ĐĂNG NHẬP MICROSOFT trước khi lưu kết quả!");
+        const employeeName = document.getElementById('employeeName').value.trim();
+        if (!employeeName) {
+            alert("Vui lòng nhập Tên Kỹ thuật viên ở đầu trang!");
+            return;
+        }
+
+        if(!TENANT_ID || TENANT_ID.includes("YOUR_")) {
+            alert("Bạn chưa cấu hình Tenant ID, Client ID, và Client Secret trong Source Code!");
             return;
         }
 
@@ -693,21 +647,32 @@
         btnSave.disabled = true;
 
         try {
-            // 1. Lấy Access Token (Lấy trong background hoặc mở popup nếu hết hạn)
-            let accessToken;
-            try {
-                const tokenResponse = await msalInstance.acquireTokenSilent({
-                    scopes: GRAPH_SCOPES,
-                    account: currentUser
-                });
-                accessToken = tokenResponse.accessToken;
-            } catch (silentError) {
-                const tokenResponse = await msalInstance.loginPopup({ scopes: GRAPH_SCOPES });
-                accessToken = tokenResponse.accessToken;
+            // Bước 1: Lấy Access Token (Server-to-Server Flow)
+            const tokenUrl = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
+            
+            const tokenParams = new URLSearchParams();
+            tokenParams.append('client_id', CLIENT_ID);
+            tokenParams.append('scope', 'https://graph.microsoft.com/.default');
+            tokenParams.append('client_secret', CLIENT_SECRET);
+            tokenParams.append('grant_type', 'client_credentials');
+
+            const tokenResponse = await fetch(tokenUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: tokenParams.toString()
+            });
+
+            if (!tokenResponse.ok) {
+                const errData = await tokenResponse.json();
+                throw new Error(errData.error_description || "Lỗi khi lấy Token từ Microsoft");
             }
 
-            // 2. Chuẩn bị Dữ liệu
-            // Lấy Base64 của cả ảnh VÀO và ảnh RA
+            const tokenJson = await tokenResponse.json();
+            const accessToken = tokenJson.access_token;
+
+            // Bước 2: Chuẩn bị Dữ liệu
             const canvasIn = document.getElementById('canvasIn');
             const base64In = canvasIn.toDataURL('image/jpeg', 0.8).split(',')[1];
 
@@ -716,19 +681,18 @@
             
             const isMatch = (detectedCountIn === detectedCountOut && detailComparisonData.every(d => d.diff === 0));
             
-            // Xử lý chuỗi danh sách tool để gộp chung vào cột GhiChu
             const detectedList = detailComparisonData.map(d => `${d.toolName}: ${d.countOut}`).join(', ');
             const missingTools = detailComparisonData.filter(d => d.diff < 0).map(d => `${d.toolName} (${Math.abs(d.diff)})`).join(', ');
             const surplusTools = detailComparisonData.filter(d => d.diff > 0).map(d => `${d.toolName} (${d.diff})`).join(', ');
 
-            // 3. Payload gửi lên Graph API
+            // Bước 3: Payload gửi lên Graph API
             const graphEndpoint = `https://graph.microsoft.com/v1.0/sites/${SP_SITE_ID}/lists/${SP_LIST_NAME}/items`;
             
             const payload = {
                 fields: {
-                    Title: `KT-${new Date().getTime()}`, // Cột "Tiêu đề" luôn dùng Internal Name là Title
-                    KhuVuc: "Trạm Kiểm Tra", // Cố định hoặc lấy từ input (ví dụ: document.getElementById('khuVuc').value)
-                    NhanVien: currentUser.name, 
+                    Title: `KT-${new Date().getTime()}`, 
+                    KhuVuc: "Trạm Kiểm Tra",
+                    NhanVien: employeeName, 
                     NgayGio: new Date().toISOString(),
                     SoLuongVao: detectedCountIn,
                     SoLuongRa: detectedCountOut,
@@ -739,7 +703,7 @@
                 }
             };
 
-            // 4. Gọi Graph API
+            // Bước 4: Gọi Graph API đẩy Item vào List
             const response = await fetch(graphEndpoint, {
                 method: 'POST',
                 headers: {
@@ -758,7 +722,7 @@
             btnSave.innerText = "ĐÃ LƯU THÀNH CÔNG ✓";
 
         } catch (error) {
-            console.error("Lỗi khi lưu SharePoint bằng Graph API:", error);
+            console.error("Lỗi khi lưu SharePoint:", error);
             alert("Không thể lưu: " + error.message);
             btnSave.innerText = originalText;
             btnSave.disabled = false;
